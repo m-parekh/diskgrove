@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Any scanned file can be opened in another app: primary storage, and SD cards and USB drives under /storage. -->
+<paths>
+    <external-path name="storage" path="." />
+    <root-path name="volumes" path="storage" />
+</paths>

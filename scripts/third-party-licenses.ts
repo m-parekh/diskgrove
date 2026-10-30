@@ -1,6 +1,7 @@
 // Builds THIRD_PARTY_LICENSES.txt from the npm packages that end up in the renderer bundle,
-// so packaged builds carry the license and notice text that those packages require.
-import { readdirSync, readFileSync } from 'node:fs'
+// so packaged builds carry the license and notice text that those packages require. The
+// Android build adds the Java libraries that Gradle compiles into the app.
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
@@ -75,7 +76,18 @@ function licenseText(root: string, pkg: PackageJson): string {
   throw new Error(`${pkg.name}@${pkg.version} has no license file; add its ${pkg.license ?? 'license'} text by hand`)
 }
 
-export function renderLicenses(roots: Iterable<string>): string {
+const DESKTOP_INTRO =
+  'DiskGrove includes the following third-party software. Electron and Chromium are\n' +
+  'covered by LICENSE.electron.txt and LICENSES.chromium.html in the application folder.'
+
+export interface LicenseFileOptions {
+  /** The opening paragraph; the default names the desktop app's Electron and Chromium license files. */
+  intro?: string
+  /** Sections for software that does not come from npm, placed after the npm packages. */
+  appendix?: string
+}
+
+export function renderLicenses(roots: Iterable<string>, options: LicenseFileOptions = {}): string {
   const sections = [...new Set(roots)].map((root) => {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson
     const source = repositoryUrl(pkg.repository)
@@ -84,16 +96,45 @@ export function renderLicenses(roots: Iterable<string>): string {
     return { name: pkg.name, text: `${RULE}\n${header.join('\n')}\n${RULE}\n\n${licenseText(root, pkg)}\n` }
   })
   sections.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-  return (
-    'DiskGrove includes the following third-party software. Electron and Chromium are\n' +
-    'covered by LICENSE.electron.txt and LICENSES.chromium.html in the application folder.\n\n' +
-    sections.map((section) => section.text).join('\n')
-  )
+  const texts = sections.map((section) => section.text)
+  if (options.appendix) texts.push(options.appendix)
+  return (options.intro ?? DESKTOP_INTRO) + '\n\n' + texts.join('\n')
+}
+
+/** A Java library that Gradle builds into the Android app; listed in android/third-party-libraries.json. */
+export interface JavaLibrary {
+  name: string
+  /** Maven groups, where a trailing `.*` also matches subgroups. The Gradle build checks the APK against them. */
+  groups: string[]
+  /** An SPDX identifier, with its text in `licenseDir`. */
+  license: string
+  source: string
+}
+
+// Gradle libraries are not in node_modules, so their license texts are kept in the repository,
+// and the libraries that share a license share one copy of it.
+export function renderJavaLibraries(libraries: JavaLibrary[], licenseDir: string): string {
+  const byLicense = new Map<string, JavaLibrary[]>()
+  for (const library of libraries) {
+    byLicense.set(library.license, [...(byLicense.get(library.license) ?? []), library])
+  }
+  return [...byLicense.keys()]
+    .sort()
+    .map((license) => {
+      const users = byLicense.get(license)!.sort((a, b) => a.name.localeCompare(b.name, 'en'))
+      const file = join(licenseDir, `${license}.txt`)
+      if (!existsSync(file)) {
+        throw new Error(`${users.map((l) => l.name).join(', ')} use ${license}; add its text as ${file}`)
+      }
+      const header = users.map((l) => `${l.name}\nLicense: ${l.license}\nSource: ${l.source}`).join('\n\n')
+      return `${RULE}\n${header}\n${RULE}\n\n${readFileSync(file, 'utf8').trim()}\n`
+    })
+    .join('\n')
 }
 
 // `extra` names packages whose output reaches the bundle without a JavaScript module,
 // such as Tailwind's generated CSS.
-export function thirdPartyLicensesPlugin(extra: string[] = []): Plugin {
+export function thirdPartyLicensesPlugin(extra: string[] = [], options: LicenseFileOptions = {}): Plugin {
   return {
     name: 'diskgrove-third-party-licenses',
     apply: 'build',
@@ -106,7 +147,7 @@ export function thirdPartyLicensesPlugin(extra: string[] = []): Plugin {
           if (root) roots.add(root)
         }
       }
-      this.emitFile({ type: 'asset', fileName: LICENSES_FILE, source: renderLicenses(roots) })
+      this.emitFile({ type: 'asset', fileName: LICENSES_FILE, source: renderLicenses(roots, options) })
     }
   }
 }

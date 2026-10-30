@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { TRAFFIC_LIGHT_INSET } from '@shared/title-bar'
 import { cn } from '@/lib/utils'
 import { useScan } from '@/scan-context'
+import { isAndroid } from '@/lib/platform'
 
 function CaptionButton({
   label,
@@ -49,6 +50,8 @@ export function TitleBar() {
   const [maximized, setMaximized] = useState(false)
   const [fullScreen, setFullScreen] = useState(false)
   const isMac = meta?.platform === 'darwin'
+  // Android apps have no window to move, resize or close.
+  const windowed = !isAndroid(meta?.platform)
 
   useEffect(() => {
     const api = window.diskgrove
@@ -71,7 +74,7 @@ export function TitleBar() {
   return (
     <header
       className="app-drag flex h-10 shrink-0 select-none items-center border-b bg-card text-sm"
-      onDoubleClick={isMac ? undefined : () => void window.diskgrove?.toggleMaximize()}
+      onDoubleClick={isMac || !windowed ? undefined : () => void window.diskgrove?.toggleMaximize()}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 px-3" style={{ paddingLeft: trafficLightInset }}>
         <AppLogo className="size-4 shrink-0 text-muted-foreground" />
@@ -95,7 +98,7 @@ export function TitleBar() {
           </>
         ) : null}
       </div>
-      {isMac ? null : (
+      {isMac || !windowed ? null : (
         <div className="app-no-drag ml-auto flex h-full items-stretch">
           <CaptionButton label="Minimize" onClick={() => void window.diskgrove.minimize()}>
             <Minus className="size-3.5" />

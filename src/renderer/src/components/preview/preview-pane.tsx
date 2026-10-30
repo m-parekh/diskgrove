@@ -19,6 +19,7 @@ import {
   type InfoRow,
   type ViewerProps
 } from './viewers'
+import { canOpenFolders, revealLabel as revealLabelFor } from '@/lib/platform'
 
 const COLLAPSED_ROWS = 4
 
@@ -153,12 +154,7 @@ function PreviewBody({ item }: { item: NodeSummary }) {
     ['Where', item.parentPath ?? item.path]
   ]
   const shown = expanded ? rows : rows.slice(0, COLLAPSED_ROWS)
-  const revealLabel =
-    meta?.platform === 'darwin'
-      ? 'Reveal in Finder'
-      : meta?.platform === 'win32'
-        ? 'Show in Explorer'
-        : 'Show in folder'
+  const revealLabel = revealLabelFor(meta?.platform)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -191,12 +187,16 @@ function PreviewBody({ item }: { item: NodeSummary }) {
         </div>
       </ScrollArea>
       <div className="flex shrink-0 items-center justify-center gap-1 border-t bg-card/60 px-2 py-1.5">
-        <Button variant="ghost" size="sm" onClick={() => void openItem(item.path)}>
-          <ExternalLink /> Open
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => void revealItem(item.path)}>
-          <FolderOpen /> {revealLabel}
-        </Button>
+        {item.kind !== 'dir' || canOpenFolders(meta?.platform) ? (
+          <Button variant="ghost" size="sm" onClick={() => void openItem(item.path)}>
+            <ExternalLink /> Open
+          </Button>
+        ) : null}
+        {revealLabel ? (
+          <Button variant="ghost" size="sm" onClick={() => void revealItem(item.path)}>
+            <FolderOpen /> {revealLabel}
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="sm"

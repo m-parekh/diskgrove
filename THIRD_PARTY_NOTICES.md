@@ -5,6 +5,8 @@ bundled into the app is listed with its license text in `THIRD_PARTY_LICENSES.tx
 which `npm run build` generates and packaged builds carry in their `resources`
 folder next to this file. Electron and Chromium licenses ship as
 `LICENSE.electron.txt` and `LICENSES.chromium.html` in the application folder.
+The Android APK carries both files in `assets/public/`, and its
+`THIRD_PARTY_LICENSES.txt` also lists the Java libraries built into it.
 
 ## shadcn/ui
 
@@ -226,4 +228,39 @@ Apache License
       of your accepting any such warranty or additional liability.
 
    END OF TERMS AND CONDITIONS
+```
+
+## Capacitor Android template
+
+The Android project in `android/` was generated from the Android template in
+[Capacitor](https://github.com/ionic-team/capacitor)'s `@capacitor/cli` package and
+adapted for DiskGrove. The upstream copyright and MIT license notice are
+reproduced below. The Gradle wrapper scripts in that folder carry their own
+Apache License 2.0 notice.
+
+Source: <https://github.com/ionic-team/capacitor>
+License: <https://github.com/ionic-team/capacitor/blob/main/LICENSE>
+
+```text
+MIT License
+
+Copyright (c) 2017-present Drifty Co.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```

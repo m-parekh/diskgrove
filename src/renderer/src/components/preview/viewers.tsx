@@ -117,6 +117,11 @@ export function TableView({ rows, header = true }: { rows: string[][]; header?: 
   )
 }
 
+// Android streams media through its WebView instead of the desktop media protocol.
+function mediaSrc(item: NodeSummary): string {
+  return window.diskgrove.mediaUrl?.(item.path, item.mtime) ?? mediaUrl(item.path, item.mtime)
+}
+
 export function Note({ children }: { children: ReactNode }) {
   return <p className="border-t bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">{children}</p>
 }
@@ -127,7 +132,7 @@ export function ImageViewer({ item, onDetails }: ViewerProps) {
   return (
     <div className="flex h-full items-center justify-center">
       <img
-        src={mediaUrl(item.path, item.mtime)}
+        src={mediaSrc(item)}
         alt=""
         draggable={false}
         className="max-h-full max-w-full rounded-sm object-contain shadow-md animate-fade"
@@ -152,7 +157,7 @@ export function VideoViewer({ item, onDetails }: ViewerProps) {
     <MediaPlayer
       kind="video"
       title={item.name}
-      src={mediaUrl(item.path, item.mtime)}
+      src={mediaSrc(item)}
       onLoadedMetadata={(media) => {
         const v = media as HTMLVideoElement
         const rows: InfoRow[] = []
@@ -184,7 +189,7 @@ export function AudioViewer({ item, onDetails }: ViewerProps) {
       ) : (
         <MediaPlayer
           kind="audio"
-          src={mediaUrl(item.path, item.mtime)}
+          src={mediaSrc(item)}
           artwork={artwork}
           onLoadedMetadata={(media) => onDetails([['Duration', formatClock(media.duration)]])}
           onError={() => setFailed(true)}

@@ -21,7 +21,7 @@ import { useScan } from '@/scan-context'
 export const SEARCH_RESULTS_ID = 'search-results'
 
 /** Ribbon search field. The leading button picks the scope, so the field is no wider than a plain one. */
-export function SearchBox() {
+export function SearchBox({ className }: { className?: string }) {
   const {
     meta,
     view,
@@ -34,17 +34,20 @@ export function SearchBox() {
     setSearchScope,
     searchInputRef,
     selectedPath,
+    selectedNode,
     rootPath
   } = useScan()
   const disabled = view !== 'scan'
   const scope = scopeInfo(searchScope)
   const ScopeIcon = scope.icon
   const selectedFolder = selectedPath ?? rootPath
+  const folderName =
+    selectedNode && selectedNode.path === selectedFolder ? selectedNode.name : baseName(selectedFolder ?? '')
   const placeholder = disabled
     ? 'Search files…'
     : searchScope === 'all'
       ? 'Search entire scan…'
-      : `Search ${baseName(selectedFolder ?? '')}…`
+      : `Search ${folderName}…`
   const shortcut = meta?.platform === 'darwin' ? '⌘F' : 'Ctrl+F'
   const focusInput = useRef(false)
 
@@ -66,7 +69,7 @@ export function SearchBox() {
   return (
     <form
       role="search"
-      className="relative w-56 min-w-24 shrink xl:w-64 2xl:w-72"
+      className={cn('relative w-56 min-w-24 shrink xl:w-64 2xl:w-72', className)}
       onSubmit={(e) => {
         e.preventDefault()
         void runSearch()

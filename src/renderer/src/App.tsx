@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import { formatBytes, formatNumber } from '@shared/format'
+import { pathCrumbs } from '@shared/paths'
 import type { DeleteMode } from '@shared/types'
 import { TitleBar } from '@/components/title-bar'
-import { Ribbon } from '@/components/ribbon'
+import { Ribbon, tabLabel } from '@/components/ribbon'
 import { StartScreen } from '@/components/start-screen'
 import { DirectoryTree } from '@/components/directory-tree'
 import { DetailsTable } from '@/components/details-table'
@@ -33,6 +34,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ScanProvider, useScan } from '@/scan-context'
 import { cn } from '@/lib/utils'
+import { trashName as trashNameFor } from '@/lib/platform'
+import { useCompactLayout } from '@/hooks/use-compact'
 
 function RightPane() {
   const { tab } = useScan()
@@ -81,7 +84,7 @@ function DeleteDialog() {
   const returnFocus = useRef<HTMLElement | null>(null)
   const items = pendingDelete ?? []
   const count = items.length
-  const trashName = meta?.platform === 'win32' ? 'Recycle Bin' : 'Trash'
+  const trashName = trashNameFor(meta?.platform)
   const totalBytes = items.reduce((sum, item) => sum + item.size, 0)
   const title =
     count > 1 ? `Delete ${formatNumber(count)} items?` : items[0]?.kind === 'dir' ? 'Delete folder?' : 'Delete file?'
@@ -113,8 +116,9 @@ function DeleteDialog() {
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Move {count > 1 ? 'them' : 'it'} to the {trashName} to keep {count > 1 ? 'them' : 'it'} recoverable, or
-            delete permanently. Permanent deletion cannot be undone.
+            {trashName
+              ? `Move ${count > 1 ? 'them' : 'it'} to the ${trashName} to keep ${count > 1 ? 'them' : 'it'} recoverable, or delete permanently. Permanent deletion cannot be undone.`
+              : 'This device has no Trash for these files, so deletion is permanent and cannot be undone.'}
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-md border bg-muted/30 text-xs">
@@ -140,11 +144,13 @@ function DeleteDialog() {
           <Button variant="outline" disabled={busy} onClick={() => setPendingDelete(null)}>
             Cancel
           </Button>
-          <Button disabled={busy} onClick={() => void run('trash')}>
-            {busy ? <Loader2 className="animate-spin" /> : <Trash2 />} Move to {trashName}
-          </Button>
+          {trashName ? (
+            <Button disabled={busy} onClick={() => void run('trash')}>
+              {busy ? <Loader2 className="animate-spin" /> : <Trash2 />} Move to {trashName}
+            </Button>
+          ) : null}
           <Button variant="destructive" disabled={busy} onClick={() => void run('permanent')}>
-            Delete permanently
+            {busy && !trashName ? <Loader2 className="animate-spin" /> : null} Delete permanently
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -188,8 +194,97 @@ function ToastHost() {
   )
 }
 
+type Pane = 'tree' | 'main' | 'preview'
+
+/** A phone shows one of the panes at a time, picked from a row of tabs. */
+function CompactPanes({ pane, setPane }: { pane: Pane; setPane: (pane: Pane) => void }) {
+  const { tab, selectedPath } = useScan()
+  const panes: Array<{ id: Pane; label: string }> = [
+    { id: 'tree', label: 'Folders' },
+    { id: 'main', label: tabLabel(tab) },
+    { id: 'preview', label: 'Preview' }
+  ]
+
+  // Picking a folder in the tree shows what is in it.
+  const shownPath = useRef(selectedPath)
+  useEffect(() => {
+    if (selectedPath === shownPath.current) return
+    shownPath.current = selectedPath
+    if (pane === 'tree') setPane('main')
+  }, [selectedPath, pane, setPane])
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div role="tablist" aria-label="Panes" className="grid shrink-0 grid-cols-3 border-b bg-card/60 p-1 text-xs">
+        {panes.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={pane === item.id}
+            className={cn(
+              'h-8 truncate rounded-md px-2 font-medium text-muted-foreground transition-colors duration-150',
+              pane === item.id && 'bg-secondary text-foreground'
+            )}
+            onClick={() => setPane(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {/* The tree and the view stay mounted so switching keeps their scroll and selection. */}
+      <div className={cn('min-h-0 flex-1', pane !== 'tree' && 'hidden')}>
+        <DirectoryTree />
+      </div>
+      <div className={cn('min-h-0 flex-1 overflow-hidden', pane !== 'main' && 'hidden')}>
+        <RightPane />
+      </div>
+      {pane === 'preview' ? (
+        <div className="min-h-0 flex-1">
+          <PreviewPane />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function Shell() {
-  const { meta, view, scanning, cancelScan, rootPath, startScan, goHome, settings, focusSearch } = useScan()
+  const {
+    meta,
+    view,
+    scanning,
+    cancelScan,
+    rootPath,
+    selectedPath,
+    selectPath,
+    startScan,
+    goHome,
+    settings,
+    focusSearch
+  } = useScan()
+  const compact = useCompactLayout()
+  const [pane, setPane] = useState<Pane>('main')
+
+  useEffect(() => {
+    if (view === 'start') setPane('main')
+  }, [view])
+
+  // Android's back button leaves the folders or preview pane, then climbs to the scan root.
+  useEffect(
+    () =>
+      window.diskgrove.onBackButton?.(() => {
+        if (compact && pane !== 'main') {
+          setPane('main')
+          return true
+        }
+        if (view !== 'scan' || !rootPath || !selectedPath) return false
+        const crumbs = pathCrumbs(rootPath, selectedPath)
+        if (crumbs.length < 2) return false
+        selectPath(crumbs[crumbs.length - 2].path)
+        return true
+      }),
+    [compact, pane, view, rootPath, selectedPath, selectPath]
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -219,47 +314,51 @@ function Shell() {
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-pane">
           <Breadcrumbs />
-          <div className="min-h-0 min-w-0 flex-1">
-            <ResizablePanelGroup direction="horizontal">
-              <ResizablePanel
-                id="tree"
-                order={1}
-                defaultSize={settings.showPreview ? 22 : 30}
-                minSize={14}
-                maxSize={50}
-                className="min-h-0 min-w-0"
-              >
-                <DirectoryTree />
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel
-                id="main"
-                order={2}
-                defaultSize={settings.showPreview ? 50 : 70}
-                minSize={30}
-                className="min-h-0 min-w-0"
-              >
-                <div className="h-full min-h-0 min-w-0 overflow-hidden">
-                  <RightPane />
-                </div>
-              </ResizablePanel>
-              {settings.showPreview ? (
-                <>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel
-                    id="preview"
-                    order={3}
-                    defaultSize={28}
-                    minSize={18}
-                    maxSize={50}
-                    className="min-h-0 min-w-0"
-                  >
-                    <PreviewPane />
-                  </ResizablePanel>
-                </>
-              ) : null}
-            </ResizablePanelGroup>
-          </div>
+          {compact ? (
+            <CompactPanes pane={pane} setPane={setPane} />
+          ) : (
+            <div className="min-h-0 min-w-0 flex-1">
+              <ResizablePanelGroup direction="horizontal">
+                <ResizablePanel
+                  id="tree"
+                  order={1}
+                  defaultSize={settings.showPreview ? 22 : 30}
+                  minSize={14}
+                  maxSize={50}
+                  className="min-h-0 min-w-0"
+                >
+                  <DirectoryTree />
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id="main"
+                  order={2}
+                  defaultSize={settings.showPreview ? 50 : 70}
+                  minSize={30}
+                  className="min-h-0 min-w-0"
+                >
+                  <div className="h-full min-h-0 min-w-0 overflow-hidden">
+                    <RightPane />
+                  </div>
+                </ResizablePanel>
+                {settings.showPreview ? (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      id="preview"
+                      order={3}
+                      defaultSize={28}
+                      minSize={18}
+                      maxSize={50}
+                      className="min-h-0 min-w-0"
+                    >
+                      <PreviewPane />
+                    </ResizablePanel>
+                  </>
+                ) : null}
+              </ResizablePanelGroup>
+            </div>
+          )}
         </div>
       )}
       <StatusBar />

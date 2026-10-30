@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/renderer/src/*"],
+      "@shared/*": ["src/shared/*"],
+      "node:path": ["src/android/shims/path.ts"],
+      "node:timers/promises": ["src/android/shims/timers.ts"]
+    }
+  },
+  "include": [
+    "src/android/**/*",
+    "src/renderer/src/**/*",
+    "src/shared/**/*",
+    "src/main/concurrency.ts",
+    "src/main/confirm-text.ts",
+    "src/main/file-identity.ts",
+    "src/main/name-match.ts",
+    "src/main/operations.ts",
+    "src/main/report.ts",
+    "src/main/scan-results.ts",
+    "src/main/scan-tree.ts",
+    "src/main/top-k.ts",
+    "src/main/validate.ts"
+  ]
+}

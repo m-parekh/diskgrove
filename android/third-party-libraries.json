@@ -1,0 +1,44 @@
+[
+  {
+    "name": "AndroidX",
+    "groups": ["androidx.*"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/androidx/androidx"
+  },
+  {
+    "name": "Apache Cordova Android",
+    "groups": ["org.apache.cordova"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/apache/cordova-android"
+  },
+  {
+    "name": "Guava ListenableFuture",
+    "groups": ["com.google.guava"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/google/guava"
+  },
+  {
+    "name": "JetBrains Java Annotations",
+    "groups": ["org.jetbrains"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/JetBrains/java-annotations"
+  },
+  {
+    "name": "JSpecify",
+    "groups": ["org.jspecify"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/jspecify/jspecify"
+  },
+  {
+    "name": "Kotlin Standard Library",
+    "groups": ["org.jetbrains.kotlin"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/JetBrains/kotlin"
+  },
+  {
+    "name": "kotlinx.coroutines",
+    "groups": ["org.jetbrains.kotlinx"],
+    "license": "Apache-2.0",
+    "source": "https://github.com/Kotlin/kotlinx.coroutines"
+  }
+]

@@ -10,6 +10,7 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { useScan } from '@/scan-context'
+import { canOpenFolders, revealLabel as revealLabelFor } from '@/lib/platform'
 
 export function ItemMenu({
   item,
@@ -35,12 +36,8 @@ export function ItemMenu({
     focusSearch
   } = useScan()
   const focusSearchOnClose = useRef(false)
-  const revealLabel =
-    meta?.platform === 'darwin'
-      ? 'Reveal in Finder'
-      : meta?.platform === 'win32'
-        ? 'Show in Explorer'
-        : 'Show in folder'
+  const revealLabel = revealLabelFor(meta?.platform)
+  const openInApp = item.kind === 'dir' && !canOpenFolders(meta?.platform)
   const targets = selection && selection.length > 1 && selection.some((s) => s.path === item.path) ? selection : [item]
   const many = targets.length > 1
 
@@ -56,12 +53,14 @@ export function ItemMenu({
           focusSearch()
         }}
       >
-        <ContextMenuItem onClick={() => void openItem(item.path)}>
+        <ContextMenuItem onClick={() => (openInApp ? selectPath(item.path) : void openItem(item.path))}>
           <ExternalLink className="size-4" /> Open
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => void revealItem(item.path)}>
-          <FolderOpen className="size-4" /> {revealLabel}
-        </ContextMenuItem>
+        {revealLabel ? (
+          <ContextMenuItem onClick={() => void revealItem(item.path)}>
+            <FolderOpen className="size-4" /> {revealLabel}
+          </ContextMenuItem>
+        ) : null}
         {locate ? (
           <ContextMenuItem onClick={() => locateItem(item)}>
             <LocateFixed className="size-4" /> Show in tree

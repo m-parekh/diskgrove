@@ -243,4 +243,11 @@ export interface DiskGroveAPI {
   onMaximized(cb: (maximized: boolean) => void): () => void
   isFullScreen(): Promise<boolean>
   onFullScreen(cb: (fullScreen: boolean) => void): () => void
+  /** A URL that streams a scanned media file; desktop serves these through its media protocol instead. */
+  mediaUrl?(path: string, version: number): string
+  /**
+   * Hardware back button (Android). Handlers run newest first until one returns true; when none
+   * does, the app goes to the background.
+   */
+  onBackButton?(cb: () => boolean): () => void
 }

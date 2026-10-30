@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useScan } from '@/scan-context'
+import { revealLabel as revealLabelFor } from '@/lib/platform'
 
 // The largest ones are listed; the counts cover them all.
 const LIST_LIMIT = 2000
@@ -70,12 +71,7 @@ function FileGroupDetails({ target, close }: { target: FileGroupTarget; close: (
     overscan: 12
   })
 
-  const revealLabel =
-    meta?.platform === 'darwin'
-      ? 'Reveal in Finder'
-      : meta?.platform === 'win32'
-        ? 'Show in Explorer'
-        : 'Show in folder'
+  const revealLabel = revealLabelFor(meta?.platform)
 
   const open = useCallback((file: NodeSummary) => void openItem(file.path), [openItem])
   const reveal = useCallback((file: NodeSummary) => void revealItem(file.path), [revealItem])
@@ -136,10 +132,10 @@ function FileGroupDetails({ target, close }: { target: FileGroupTarget; close: (
         </DialogDescription>
       </DialogHeader>
       <div className="flex min-h-0 flex-1 flex-col rounded-md border bg-muted/30 text-[13px]">
-        <div className="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_6.5rem_9.5rem_5.25rem] items-center border-b bg-muted px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_6.5rem_9.5rem_5.25rem] max-sm:grid-cols-[minmax(0,1fr)_5.5rem_auto] items-center border-b bg-muted px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           <span className="px-2">Name</span>
           <span className="px-2 text-right">Size</span>
-          <span className="px-2">Modified</span>
+          <span className="px-2 max-sm:hidden">Modified</span>
           <span />
         </div>
         <ScrollArea orientation="vertical" className="min-h-0 flex-1" viewportRef={viewportRef}>
@@ -163,7 +159,7 @@ const FileRow = memo(function FileRow({
   file: NodeSummary
   odd: boolean
   sizeRatio: number
-  revealLabel: string
+  revealLabel: string | null
   onOpen: (file: NodeSummary) => void
   onReveal: (file: NodeSummary) => void
   onShowInTree: (file: NodeSummary) => void
@@ -172,7 +168,7 @@ const FileRow = memo(function FileRow({
   return (
     <div
       className={cn(
-        'grid h-full grid-cols-[minmax(0,1fr)_6.5rem_9.5rem_5.25rem] items-center rounded transition-colors duration-150 hover:bg-accent/60',
+        'grid h-full grid-cols-[minmax(0,1fr)_6.5rem_9.5rem_5.25rem] max-sm:grid-cols-[minmax(0,1fr)_5.5rem_auto] items-center rounded transition-colors duration-150 hover:bg-accent/60',
         odd && 'bg-muted/30'
       )}
       title={file.path}
@@ -192,14 +188,16 @@ const FileRow = memo(function FileRow({
         <SizeBar ratio={sizeRatio} className="inset-y-[9px]" />
         <span className="relative z-10">{formatBytes(file.size)}</span>
       </span>
-      <span className="truncate px-2 text-muted-foreground">{formatDate(file.mtime)}</span>
+      <span className="truncate px-2 text-muted-foreground max-sm:hidden">{formatDate(file.mtime)}</span>
       <span className="flex items-center justify-end pr-1">
         <RowAction label="Open" onClick={() => onOpen(file)}>
           <ExternalLink />
         </RowAction>
-        <RowAction label={revealLabel} onClick={() => onReveal(file)}>
-          <FolderOpen />
-        </RowAction>
+        {revealLabel ? (
+          <RowAction label={revealLabel} onClick={() => onReveal(file)}>
+            <FolderOpen />
+          </RowAction>
+        ) : null}
         <RowAction label="Show in tree" onClick={() => onShowInTree(file)}>
           <LocateFixed />
         </RowAction>

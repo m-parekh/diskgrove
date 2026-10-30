@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DiskGrove</string>
+    <string name="title_activity_main">DiskGrove</string>
+    <string name="package_name">io.github.tanmay73.diskgrove</string>
+    <string name="custom_url_scheme">io.github.tanmay73.diskgrove</string>
+</resources>

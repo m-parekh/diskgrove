@@ -18,6 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useScan } from '@/scan-context'
+import { revealLabel as revealLabelFor } from '@/lib/platform'
 
 // The dialog lists the first ones found; the counts cover them all.
 const LIST_LIMIT = 2000
@@ -59,6 +60,8 @@ function reasonOf(code: string): string {
 
 // Elevating the whole app is not suggested: SECURITY.md advises against it for routine scans.
 function accessHint(platform: string | undefined): string {
+  if (platform === 'android')
+    return "Usually they are other apps' private folders, such as those in Android/data and Android/obb, which Android keeps from every other app."
   const usual = "Usually they are system files or other users' folders, which your account isn't allowed to read."
   if (platform !== 'darwin') return usual
   return `${usual} Folders protected by macOS privacy settings need Full Disk Access, under System Settings > Privacy & Security.`
@@ -184,12 +187,7 @@ function UnreadableDetails({ count, close }: { count: number; close: () => void 
     paddingEnd: LIST_PADDING
   })
 
-  const revealLabel =
-    meta?.platform === 'darwin'
-      ? 'Reveal in Finder'
-      : meta?.platform === 'win32'
-        ? 'Show in Explorer'
-        : 'Show in folder'
+  const revealLabel = revealLabelFor(meta?.platform)
 
   const showInTree = useCallback(
     (item: UnreadableItem) => {
@@ -277,7 +275,7 @@ const UnreadableRow = memo(function UnreadableRow({
   onReveal
 }: {
   item: UnreadableItem
-  revealLabel: string
+  revealLabel: string | null
   onShowInTree: (item: UnreadableItem) => void
   onReveal: (item: UnreadableItem) => void
 }) {
@@ -296,9 +294,11 @@ const UnreadableRow = memo(function UnreadableRow({
         >
           <LocateFixed />
         </RowAction>
-        <RowAction label={revealLabel} onClick={() => onReveal(item)}>
-          <FolderOpen />
-        </RowAction>
+        {revealLabel ? (
+          <RowAction label={revealLabel} onClick={() => onReveal(item)}>
+            <FolderOpen />
+          </RowAction>
+        ) : null}
         <RowAction label="Copy path" onClick={() => void navigator.clipboard.writeText(item.path)}>
           <Copy />
         </RowAction>

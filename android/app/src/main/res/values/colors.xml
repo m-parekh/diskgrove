@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The dark theme background, which the app opens in by default. -->
+    <color name="splash_background">#0c1017</color>
+    <color name="dialog_accent_dark">#4c9bff</color>
+    <color name="dialog_accent_light">#1d6fd8</color>
+</resources>

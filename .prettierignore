@@ -4,4 +4,6 @@ release/
 dist/
 coverage/
 package-lock.json
+# Prettier does not read android/.gitignore, and Prettier has no Java or Gradle support.
+android/
 *.tsbuildinfo

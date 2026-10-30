@@ -59,7 +59,31 @@ Release builds run with a read-only repository token; a separate job that runs n
 npm code attaches the installers to the draft release. Only the repository admin
 can create release tags or update `main`, and published releases are immutable.
 Dependabot waits seven days before proposing a new dependency version, except for
-security updates.
+security updates. CI checks the Gradle wrapper against Gradle's published
+checksums before running it.
+
+## Android
+
+The Android app has no process boundary between the interface and the
+filesystem. The React app, the scanner and `src/android/api.ts` share one
+WebView, and that code calls the `DiskGroveNative` Java plugin, which can read
+and delete anything in shared storage. `api.ts` applies the desktop validators,
+accepts only paths in the current scan, and runs the same identity, ancestor and
+link checks before file actions. These checks guard against interface mistakes.
+They do not contain script running in the WebView. That page loads only from the
+APK, under a CSP that allows the app's own scripts and no connections. The app
+requests no `INTERNET` permission.
+
+DiskGrove asks for All files access (`MANAGE_EXTERNAL_STORAGE`) on Android 11
+and later, and for the storage permissions before that. App backups are off.
+Deletion waits for a native dialog, and dismissing it deletes nothing. Opening a
+file shows the system app chooser every time; the chosen app gets read access to
+that file only, through a FileProvider that is not exported. Previews of
+images, audio and video stream from a path on the app's own origin that answers
+only GET requests for those types, with `nosniff` and a CSP that blocks scripts;
+it is not limited to scanned files. Reports are saved through the system file
+picker. Settings and recent scans stay in the WebView's storage inside the app's
+private data.
 
 ## Limits
 
@@ -69,7 +93,9 @@ security updates.
 - Opening a file invokes its OS handler and can execute a program.
 - Previews parse untrusted file content with PDF.js and Chromium's image and
   media decoders. A flaw in one of them could be reached by selecting a crafted
-  file; the renderer sandbox limits what it can do.
+  file; on desktop the renderer sandbox limits what it can do. On Android, such
+  a flaw would run with the app's All files access, because the WebView also
+  holds the native plugin.
 - Duplicate results are snapshots of content hashes. Files can change afterward;
   hard links and reflinks can overstate recoverable space.
 - Network mounts and OS handlers may access the network outside Electron's
@@ -91,3 +117,7 @@ security updates.
   verify the publisher. The `.sha256` files only detect corrupted downloads,
   since they are published alongside the installers. Development builds do not
   provide the same protections as packaged releases.
+- The Android APK is signed with a debug key that the release runner generates,
+  so the signature identifies nobody and changes with every release. Android
+  treats each release as an unrelated app, so users must uninstall the previous
+  one first and cannot rely on the signature to tell DiskGrove from a lookalike.

@@ -19,6 +19,8 @@
   },
   "include": [
     "electron.vite.config.ts",
+    "capacitor.config.ts",
+    "vite.android.config.ts",
     "vitest.config.ts",
     "vitest.benchmark.config.ts",
     "benchmarks/**/*.ts",
@@ -26,6 +28,11 @@
     "tests/**/*.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
+    "src/shared/**/*",
+    "src/android/api.ts",
+    "src/android/native-api.ts",
+    "src/android/scanner.ts",
+    "src/android/shims/**/*",
+    "src/renderer/src/lib/platform.ts"
   ]
 }

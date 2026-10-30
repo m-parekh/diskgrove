@@ -15,7 +15,8 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'anim-popper z-50 overflow-hidden rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md',
+        // Without hover, a tooltip only opens when focus returns to its trigger, and nothing then closes it.
+        'anim-popper z-50 overflow-hidden rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md [@media(hover:none)]:hidden',
         className
       )}
       {...props}

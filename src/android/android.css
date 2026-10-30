@@ -1,0 +1,4 @@
+@import '../renderer/src/index.css';
+
+/* Vite builds the Android app from src/android, so point Tailwind at the renderer's class names too. */
+@source '../renderer/src';

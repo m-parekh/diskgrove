@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { MAX_PREVIEW_READ, MEDIA_SCHEME } from '@shared/preview'
 import { stepFontScale } from '@shared/font-scale'
+import { withRecent } from '@shared/settings'
 import { trafficLightPosition } from '@shared/title-bar'
 import type { NodeSummary } from '@shared/types'
 import { listDrives, spaceAt } from './drives'
@@ -290,15 +291,12 @@ function registerIpc(): void {
       // A stopped scan's totals are partial; keep them out of the recent list.
       if (lastComplete.cancelled) return
       const settings = await loadSettings()
-      const recents = [
-        {
-          path: lastComplete.rootPath,
-          scannedAt: Date.now(),
-          size: lastComplete.bytes,
-          files: lastComplete.files
-        },
-        ...settings.recents.filter((r) => r.path !== lastComplete!.rootPath)
-      ].slice(0, 12)
+      const recents = withRecent(settings.recents, {
+        path: lastComplete.rootPath,
+        scannedAt: Date.now(),
+        size: lastComplete.bytes,
+        files: lastComplete.files
+      })
       await saveSettings({ recents })
     })
   )

@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
+# cmd.exe can misread labels in batch files with LF line endings.
+*.bat text eol=crlf

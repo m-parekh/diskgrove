@@ -33,6 +33,7 @@ import { formatNumber } from '@shared/format'
 import { isWithin, pathCrumbs } from '@shared/paths'
 import { resolveTheme, themeIsDark } from '@shared/themes'
 import { DEFAULT_FONT_SCALE } from '@shared/font-scale'
+import { trashName as trashNameFor } from '@/lib/platform'
 
 const DEFAULT_SORT: SortSpec = { key: 'size', dir: 'desc' }
 
@@ -314,6 +315,13 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(id)
   }, [loadSideData, scanning])
 
+  // A scan resolves only once it ends, after a new root has been rendered, so it must refresh with the
+  // latest callbacks: the ones it closed over still hold the previous root and would replace the new tree.
+  const latestRefreshVisible = useRef(refreshVisible)
+  latestRefreshVisible.current = refreshVisible
+  const latestLoadSideData = useRef(loadSideData)
+  latestLoadSideData.current = loadSideData
+
   const applySettings = useCallback(async (partial: Partial<AppSettings>) => {
     const next = await window.diskgrove.setSettings(partial)
     setSettings(next)
@@ -368,8 +376,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         })
         const s = await window.diskgrove.getSettings()
         setSettings(s)
-        await refreshVisible()
-        await loadSideData()
+        await latestRefreshVisible.current()
+        await latestLoadSideData.current()
       } catch (err) {
         showToast(err instanceof Error ? err.message : 'Scan failed')
         setScanning(false)
@@ -377,7 +385,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         scanInFlight.current = false
       }
     },
-    [settings.followLinks, settings.skipHidden, scanning, dupLoading, refreshVisible, loadSideData, showToast]
+    [settings.followLinks, settings.skipHidden, scanning, dupLoading, showToast]
   )
 
   const cancelScan = useCallback(async () => {
@@ -573,7 +581,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       setPendingDelete(null)
       if (result.deleted.length === 0 && result.failed.length === 0) return
 
-      const trashName = meta?.platform === 'win32' ? 'Recycle Bin' : 'Trash'
+      const trashName = trashNameFor(meta?.platform) ?? 'Trash'
       const count = result.deleted.length
       const what =
         count === 1 && items.length === 1 ? items[0].name : `${formatNumber(count)} item${count === 1 ? '' : 's'}`

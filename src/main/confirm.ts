@@ -1,28 +1,13 @@
 import { dialog, type BrowserWindow } from 'electron'
-import type { DeleteMode } from '@shared/types'
+import { describeFileAction, type FileAction } from './confirm-text'
 
-export async function confirmFileAction(
-  owner: BrowserWindow,
-  paths: string[],
-  action: DeleteMode | 'open'
-): Promise<boolean> {
-  const label = action === 'open' ? 'Open' : action === 'trash' ? 'Move to Trash / Recycle Bin' : 'Delete permanently'
-  const detail =
-    paths
-      .slice(0, 8)
-      .map((p) => JSON.stringify(p))
-      .join('\n') + (paths.length > 8 ? `\n…and ${paths.length - 8} more items` : '')
-  const warning =
-    action === 'open'
-      ? 'The system will open this item with its default handler. Executable files can run programs.'
-      : action === 'permanent'
-        ? 'This cannot be undone. Selected folders include all their current contents.'
-        : 'Selected folders include all their current contents.'
+export async function confirmFileAction(owner: BrowserWindow, paths: string[], action: FileAction): Promise<boolean> {
+  const { label, message, detail } = describeFileAction(paths, action)
   const result = await dialog.showMessageBox(owner, {
     type: 'warning',
     title: label,
-    message: `${label}: ${paths.length} item${paths.length === 1 ? '' : 's'}?`,
-    detail: `${warning}\n\n${detail}`,
+    message,
+    detail,
     buttons: ['Cancel', label],
     defaultId: 0,
     cancelId: 0,

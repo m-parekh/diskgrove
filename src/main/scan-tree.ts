@@ -1,8 +1,7 @@
-import type { Stats } from 'node:fs'
 import path from 'node:path'
 import { extensionOf } from '@shared/format'
 import type { NodeKind } from '@shared/types'
-import type { FileIdentity } from './file-safety'
+import type { EntryStats, FileIdentity } from './file-identity'
 
 /** No item: the root's parent, an empty child list, the end of a sibling list. */
 export const NONE = -1
@@ -47,7 +46,7 @@ export class ScanTree {
   fileCount = new Uint32Array(0)
   folderCount = new Uint32Array(0)
   private extIndex = new Uint32Array(0)
-  // What lstat said about the item itself, to tell later whether it was replaced (see file-safety).
+  // What lstat said about the item itself, to tell later whether it was replaced (see file-identity).
   private dev = new Float64Array(0)
   private ino = new Float64Array(0)
   private birthtime = new Float64Array(0)
@@ -63,7 +62,7 @@ export class ScanTree {
   }
 
   /** Adds an item as the last child of `parent`; `stats` is its own lstat. */
-  add(name: string, kind: NodeKind, parent: number, stats: Stats): number {
+  add(name: string, kind: NodeKind, parent: number, stats: EntryStats): number {
     if (this.count === this.flags.length) this.grow()
     const id = this.count++
     this.names.push(name)
@@ -121,7 +120,7 @@ export class ScanTree {
     this.ownMtime = grown(this.ownMtime, capacity)
   }
 
-  setTimes(id: number, stats: Stats): void {
+  setTimes(id: number, stats: EntryStats): void {
     this.mtime[id] = stats.mtimeMs
     this.atime[id] = stats.atimeMs
     this.ctime[id] = stats.ctimeMs

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { isAndroid } from '@/lib/platform'
 import { useScan } from '@/scan-context'
 
 function kindIcon(kind: DriveKind) {
@@ -21,7 +22,7 @@ function DriveRing({ used, total }: { used: number; total: number }) {
   const ratio = total > 0 ? Math.min(1, used / total) : 0
   const color = ratio > 0.9 ? 'var(--destructive)' : ratio > 0.75 ? 'var(--chart-3)' : 'var(--primary)'
   return (
-    <svg width="56" height="56" viewBox="0 0 56 56" className="shrink-0">
+    <svg width="56" height="56" viewBox="0 0 56 56" className="shrink-0 max-sm:hidden">
       <circle cx="28" cy="28" r={r} fill="none" stroke="currentColor" className="text-border" strokeWidth="6" />
       <circle
         cx="28"
@@ -40,17 +41,18 @@ function DriveRing({ used, total }: { used: number; total: number }) {
 }
 
 export function StartScreen() {
-  const { drives, settings, startScan, refreshDrives } = useScan()
+  const { meta, drives, settings, startScan, refreshDrives } = useScan()
+  const android = isAndroid(meta?.platform)
   const [refreshing, setRefreshing] = useState(false)
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <div className="stagger-children mx-auto flex max-w-5xl flex-col gap-8 px-8 py-10">
+      <div className="stagger-children mx-auto flex max-w-5xl flex-col gap-8 px-8 py-10 max-sm:gap-6 max-sm:px-4 max-sm:py-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Where did my disk space go?</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
-            Scan a drive or folder to see an Explorer-style tree, size bars, treemap, file types, and the largest files
-            — all locally on your machine.
+            Scan a drive or folder to see {android ? 'a folder tree' : 'an Explorer-style tree'}, size bars, treemap,
+            file types, and the largest files — all locally on your {android ? 'device' : 'machine'}.
           </p>
         </div>
 
@@ -80,7 +82,7 @@ export function StartScreen() {
 
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Drives</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {drives.map((drive, i) => (
               <DriveCard
                 key={drive.path}
@@ -102,11 +104,11 @@ export function StartScreen() {
               {settings.recents.map((r, i) => (
                 <button
                   key={r.path}
-                  className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-accent/60"
+                  className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-accent/60 max-sm:flex-col max-sm:items-start max-sm:gap-0.5"
                   style={{ animationDelay: `${180 + i * 50}ms` }}
                   onClick={() => void startScan(r.path)}
                 >
-                  <span className="truncate font-medium">{r.path}</span>
+                  <span className="truncate font-medium max-sm:max-w-full">{r.path}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {formatBytes(r.size)} · {formatNumber(r.files)} files · {formatDate(r.scannedAt)}
                   </span>
@@ -129,7 +131,7 @@ function DriveCard({ drive, delay, onScan }: { drive: DriveInfo; delay: number; 
     <Card className="hover-lift animate-rise flex items-center gap-4 p-4" style={{ animationDelay: `${delay}ms` }}>
       <DriveRing used={drive.used} total={drive.total} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-sm:flex-wrap">
           <Icon className="size-4 text-sky-400" />
           <span className="font-semibold">{drive.label}</span>
           {drive.name ? <span className="truncate text-sm text-muted-foreground">{drive.name}</span> : null}

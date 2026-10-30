@@ -1,10 +1,11 @@
 # DiskGrove
 
-DiskGrove is a desktop disk space analyzer built with Electron, React and TypeScript.
-Packaging targets Windows, macOS (beta) and Linux.
+DiskGrove is a disk space analyzer built with Electron, React and TypeScript.
+Packaging targets Windows, macOS (beta), Linux and Android (beta). The Android
+app runs the same interface and scanner in a Capacitor shell.
 
 DiskGrove is free and open source, and works the same way on every platform it
-supports. Everything stays on your computer: there is no account, telemetry or
+supports. Everything stays on your device: there is no account, telemetry or
 cloud service. You can preview a file before deleting it, and nothing is opened
 or deleted without your confirmation.
 
@@ -26,7 +27,7 @@ or deleted without your confirmation.
 - Export CSV, JSON or a standalone HTML report.
 - Reveal items in the file manager, open them, or move them to Trash / Recycle Bin.
   Permanent deletion is also available. Opening and deletion require a native
-  confirmation dialog.
+  confirmation dialog. See [Android](#android) for what differs there.
 
 | Details                                                                       | Extensions                                                                             | Duplicates                                                                             |
 | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -44,8 +45,9 @@ Download the installer for your system from
 | macOS (Intel, beta)         | `DiskGrove-<version>-mac-x64.dmg`           |
 | Linux (x64)                 | `DiskGrove-<version>-linux-x86_64.AppImage` |
 | Debian, Ubuntu (x64)        | `DiskGrove-<version>-linux-amd64.deb`       |
+| Android 7.0 or later (beta) | `DiskGrove-<version>-android.apk`           |
 
-The macOS builds are in beta. Please report any problems in
+The macOS and Android builds are in beta. Please report any problems in
 [Issues](https://github.com/tanmay-73/diskgrove/issues).
 
 Each file has a `.sha256` checksum beside it. Check a download with
@@ -72,6 +74,34 @@ launch:
   `sudo apt install ./DiskGrove-*-linux-amd64.deb`, which also installs its
   dependencies. DiskGrove then appears in the applications menu and runs as
   `diskgrove` from a terminal. It installs to `/opt/DiskGrove`.
+- **Android:** open the APK on the device and allow your browser or file manager
+  to install unknown apps when Android asks. Google Play Protect may warn about
+  an app from an unknown developer. The APK is signed with a key generated for
+  each release, so Android refuses to install a new version over an old one:
+  uninstall DiskGrove first, which also clears its settings and recent scans.
+
+### Android
+
+On first launch DiskGrove asks for **All files access** (on Android 10 and
+earlier, the storage permission), which it needs to measure every folder in
+shared storage. The app has no network permission. The start screen lists
+internal shared storage and any SD card or USB drive. **Select folder** uses the
+system folder picker, which on Android 11 and later cannot pick a drive's root
+or its `Download` folder: scan the drive from its card instead, and use **Scan
+this folder** on any folder in the results.
+
+The Android app differs from the desktop one in a few ways:
+
+- Deletion is permanent. Android has no Trash for shared storage.
+- **Open** passes a file to another app through the system chooser. On a folder
+  it browses into the folder in DiskGrove instead, and there is no reveal in a
+  file manager.
+- Other apps' private folders, such as those in `Android/data` and
+  `Android/obb`, cannot be read and are counted as unreadable.
+- Exports are saved through the system file picker.
+- The Back button closes dialogs and menus, returns from the folders or preview
+  pane, and goes up one folder at a time to the scan root. From there it puts
+  DiskGrove in the background.
 
 ## Development
 
@@ -100,12 +130,25 @@ npm run dist         # installer for the current platform
 The configured targets are Windows NSIS, macOS DMG (Apple silicon and Intel,
 in beta) and Linux AppImage and .deb. Build on the target operating system. Signing and
 notarization are not configured, so local artifacts are unsigned. Pushing a
-version tag builds all three in GitHub Actions; see
+version tag builds all three, and the Android APK, in GitHub Actions; see
 [Releasing](CONTRIBUTING.md#releasing).
 
 The Windows installer registers an uninstaller and the .deb is removed with apt.
 The macOS and Linux builds also bundle `resources/uninstall.sh`; see
 [Uninstalling](#uninstalling).
+
+### Android
+
+Building the APK needs JDK 21 and the Android SDK with platform 36, found
+through `ANDROID_HOME` or `android/local.properties`:
+
+```sh
+npm run android:apk  # signed APK in android/app/build/outputs/apk/release/
+```
+
+The release build is signed with the build machine's debug key, which Gradle
+creates in `~/.android` when it is missing. See
+[Android development](CONTRIBUTING.md#android) for the emulator workflow.
 
 ## Uninstalling
 
@@ -149,6 +192,9 @@ sh /opt/DiskGrove/resources/uninstall.sh
 sudo apt remove diskgrove
 ```
 
+On Android, uninstall DiskGrove like any other app. Android removes its settings
+and recent scans with it; exported reports stay where you saved them.
+
 ## Scan behavior and limits
 
 Scans are snapshots. Stopping a scan keeps the partial results: the status bar
@@ -177,9 +223,9 @@ compression and reflinks can make the actual recoverable space smaller. Scans
 keep metadata in memory: about 250 MB of RAM per million files and folders.
 
 The app has no telemetry or cloud service. Recent scan paths are saved locally
-in Electron's user-data directory and stay there after uninstalling unless you
-choose to remove them. Reports contain filenames and full paths; review them
-before sharing.
+in Electron's user-data directory, or the app's private storage on Android, and
+on desktop stay there after uninstalling unless you choose to remove them.
+Reports contain filenames and full paths; review them before sharing.
 
 ## Contributing
 
