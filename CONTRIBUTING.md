@@ -201,6 +201,33 @@ make changes elsewhere. The app's version comes from `package.json`.
 
 ## Android smoke test
 
+The instrumented tests run the **release APK**, not a mock filesystem or a
+debug-only build. On a disposable API 30+ emulator with a phone-sized display:
+
+```sh
+npm run android:sync
+cd android
+./gradlew assembleRelease connectedReleaseAndroidTest --no-daemon --console=plain
+```
+
+`NativeIntegrationTest` creates and removes its own shared-storage fixtures.
+It checks the responsive scan UI, exact scan totals,
+search, duplicate hashing (including a sample-hash collision), file reads,
+media ranges, rescanning, and cancelling/accepting the native delete dialog.
+It changes the app's all-files-access setting and recent scans, so do not run
+it against an installation whose settings you need to keep. Tests require API
+30 or later. Test the permission gate manually from a fresh installation:
+revoking all-files access terminates the app, including in-process instrumentation.
+The legacy permission flow still needs manual testing.
+
+Retain `app/build/outputs/androidTest-results/connected/` (JUnit XML and device
+logs), `app/build/reports/androidTests/connected/` (HTML report), and
+`app/build/outputs/connected_android_test_additional_output/` (screenshots,
+copied automatically from the emulator by Gradle).
+
+The following checks supplement the automated tests, especially system pickers,
+opening files in other apps and the different preview formats.
+
 Push the desktop fixture to the emulator, for example with
 `adb push fixture /sdcard/Download/`, and check the same flow on a phone-sized
 screen:

@@ -10,6 +10,8 @@ if (minor > 99 || patch > 99) throw new GradleException("versionCode needs minor
 android {
     namespace = "io.github.tanmay73.diskgrove"
     compileSdk = rootProject.ext.compileSdkVersion
+    // Exercise the same signed, non-debuggable APK that the release workflow ships.
+    testBuildType "release"
     defaultConfig {
         applicationId "io.github.tanmay73.diskgrove"
         minSdkVersion rootProject.ext.minSdkVersion
