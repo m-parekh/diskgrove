@@ -6,6 +6,7 @@ import type { DeleteMode } from '@shared/types'
 import { TitleBar } from '@/components/title-bar'
 import { Ribbon, tabLabel } from '@/components/ribbon'
 import { StartScreen } from '@/components/start-screen'
+import { AndroidHome } from '@/components/android/android-home'
 import { DirectoryTree } from '@/components/directory-tree'
 import { DetailsTable } from '@/components/details-table'
 import { StatusBar } from '@/components/status-bar'
@@ -34,7 +35,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ScanProvider, useScan } from '@/scan-context'
 import { cn } from '@/lib/utils'
-import { trashName as trashNameFor } from '@/lib/platform'
+import { isAndroid, trashName as trashNameFor } from '@/lib/platform'
 import { useCompactLayout } from '@/hooks/use-compact'
 
 function RightPane() {
@@ -269,7 +270,7 @@ function Shell() {
     if (view === 'start') setPane('main')
   }, [view])
 
-  // Android's back button leaves the folders or preview pane, then climbs to the scan root.
+  // Android's back button leaves the folders or preview pane, climbs to the scan root, then returns home.
   useEffect(
     () =>
       window.diskgrove.onBackButton?.(() => {
@@ -277,13 +278,13 @@ function Shell() {
           setPane('main')
           return true
         }
-        if (view !== 'scan' || !rootPath || !selectedPath) return false
-        const crumbs = pathCrumbs(rootPath, selectedPath)
-        if (crumbs.length < 2) return false
-        selectPath(crumbs[crumbs.length - 2].path)
+        if (view !== 'scan') return false
+        const crumbs = rootPath && selectedPath ? pathCrumbs(rootPath, selectedPath) : []
+        if (crumbs.length >= 2) selectPath(crumbs[crumbs.length - 2].path)
+        else goHome()
         return true
       }),
-    [compact, pane, view, rootPath, selectedPath, selectPath]
+    [compact, pane, view, rootPath, selectedPath, selectPath, goHome]
   )
 
   useEffect(() => {
@@ -305,11 +306,16 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey)
   }, [meta, view, scanning, cancelScan, rootPath, startScan, goHome, focusSearch])
 
+  // Android's home has its own header and navigation in place of the title bar, ribbon and status bar.
+  const androidHome = view === 'start' && isAndroid(meta?.platform)
+
   return (
     <div className="relative flex h-full min-h-0 w-full flex-1 flex-col">
-      <TitleBar />
-      <Ribbon />
-      {view === 'start' ? (
+      {androidHome ? null : <TitleBar />}
+      {androidHome ? null : <Ribbon />}
+      {androidHome ? (
+        <AndroidHome />
+      ) : view === 'start' ? (
         <StartScreen />
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-pane">
@@ -361,7 +367,7 @@ function Shell() {
           )}
         </div>
       )}
-      <StatusBar />
+      {androidHome ? null : <StatusBar />}
       <DeleteDialog />
       <ToastHost />
     </div>

@@ -3,16 +3,20 @@ package io.github.tanmay73.diskgrove;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.storage.StorageManager;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
@@ -45,6 +49,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -80,6 +85,8 @@ public class DiskGroveNativePlugin extends Plugin {
     private final ExecutorService fsPool = Executors.newFixedThreadPool(4);
     private final ExecutorService hashPool = Executors.newFixedThreadPool(2);
     private final ExecutorService exportPool = Executors.newSingleThreadExecutor();
+    private final ExecutorService appsPool = Executors.newSingleThreadExecutor();
+    private final ExecutorService mediaPool = Executors.newSingleThreadExecutor();
 
     private final AtomicInteger hashGeneration = new AtomicInteger();
     private final Map<String, Export> exports = new ConcurrentHashMap<>();
@@ -159,6 +166,8 @@ public class DiskGroveNativePlugin extends Plugin {
         fsPool.shutdownNow();
         hashPool.shutdownNow();
         exportPool.shutdownNow();
+        appsPool.shutdownNow();
+        mediaPool.shutdownNow();
         for (Export export : exports.values()) {
             try {
                 export.out.close();
@@ -254,6 +263,8 @@ public class DiskGroveNativePlugin extends Plugin {
         }
         run(fsPool, call, () -> {
             NativeFs.removeTree(path);
+            // Gallery and other apps read the media index, which may still list what was just deleted.
+            MediaScannerConnection.scanFile(getContext(), new String[] { path }, null, null);
             call.resolve();
         });
     }
@@ -386,6 +397,200 @@ public class DiskGroveNativePlugin extends Plugin {
         call.resolve(result("path", tree == null ? null : StorageVolumes.pathOfTree(getContext(), tree)));
     }
 
+    // Access the user can grant
+
+    private boolean holds(String permission) {
+        return getContext().checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private JSObject access() {
+        JSObject out = new JSObject();
+        out.put("sdk", Build.VERSION.SDK_INT);
+        out.put("files", hasStorageAccess());
+        out.put("allFilesSetting", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R);
+        out.put("usage", AppsInspector.hasUsageAccess(getContext()));
+        out.put("appSizes", Build.VERSION.SDK_INT >= Build.VERSION_CODES.O);
+        // Install-time permissions: granted with the app, but listed so the access screen shows all of them.
+        out.put("packages", Build.VERSION.SDK_INT < Build.VERSION_CODES.R || holds(Manifest.permission.QUERY_ALL_PACKAGES));
+        out.put("uninstall", Build.VERSION.SDK_INT < Build.VERSION_CODES.O || holds(Manifest.permission.REQUEST_DELETE_PACKAGES));
+        out.put("clearCache", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R);
+        return out;
+    }
+
+    @PluginMethod
+    public void accessStatus(PluginCall call) {
+        call.resolve(access());
+    }
+
+    @PluginMethod
+    public void requestUsageAccess(PluginCall call) {
+        if (AppsInspector.hasUsageAccess(getContext())) {
+            call.resolve(access());
+            return;
+        }
+        // Android 10 and later open DiskGrove's own switch when given its package; older versions list every app.
+        Uri app = Uri.parse("package:" + getContext().getPackageName());
+        try {
+            startActivityForResult(call, new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, app), "accessResult");
+        } catch (ActivityNotFoundException e) {
+            try {
+                startActivityForResult(call, new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), "accessResult");
+            } catch (ActivityNotFoundException e2) {
+                call.reject("This device has no setting for usage access");
+            }
+        }
+    }
+
+    @ActivityCallback
+    private void accessResult(PluginCall call, ActivityResult ignored) {
+        if (call != null) call.resolve(access());
+    }
+
+    // Installed apps
+
+    private static String packageArg(PluginCall call) {
+        Object value = call.getData().opt("package");
+        if (AppsInspector.isPackageName(value)) return (String) value;
+        call.reject("Expected a package name", "EINVAL");
+        return null;
+    }
+
+    @PluginMethod
+    public void deviceStorage(PluginCall call) {
+        run(appsPool, call, () -> call.resolve(AppsInspector.deviceSpace(getContext())));
+    }
+
+    @PluginMethod
+    public void listApps(PluginCall call) {
+        run(appsPool, call, () -> call.resolve(AppsInspector.list(getContext())));
+    }
+
+    @PluginMethod
+    public void appInfo(PluginCall call) {
+        String pkg = packageArg(call);
+        if (pkg == null) return;
+        run(appsPool, call, () -> call.resolve(result("app", AppsInspector.one(getContext(), pkg))));
+    }
+
+    @PluginMethod
+    public void openApp(PluginCall call) {
+        String pkg = packageArg(call);
+        if (pkg == null) return;
+        Intent launch = getContext().getPackageManager().getLaunchIntentForPackage(pkg);
+        if (launch == null) {
+            call.reject("This app cannot be opened");
+            return;
+        }
+        try {
+            getActivity().startActivity(launch);
+            call.resolve();
+        } catch (ActivityNotFoundException e) {
+            call.reject("This app cannot be opened");
+        }
+    }
+
+    /** The system's App info page, where the user can clear the app's cache and storage, or stop it. */
+    @PluginMethod
+    public void appDetails(PluginCall call) {
+        String pkg = packageArg(call);
+        if (pkg == null) return;
+        Intent details = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
+        try {
+            startActivityForResult(call, details, "appReturnResult");
+        } catch (ActivityNotFoundException e) {
+            call.reject("This device has no App info page");
+        }
+    }
+
+    /** Android's own uninstall dialog; nothing is removed unless the user confirms there. */
+    @PluginMethod
+    public void uninstallApp(PluginCall call) {
+        String pkg = packageArg(call);
+        if (pkg == null) return;
+        if (pkg.equals(getContext().getPackageName())) {
+            call.reject("DiskGrove cannot uninstall itself from here");
+            return;
+        }
+        Intent uninstall = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg)).putExtra(
+            Intent.EXTRA_RETURN_RESULT,
+            true
+        );
+        try {
+            startActivityForResult(call, uninstall, "appReturnResult");
+        } catch (ActivityNotFoundException e) {
+            call.reject("This device cannot uninstall apps from here");
+        }
+    }
+
+    @ActivityCallback
+    private void appReturnResult(PluginCall call, ActivityResult ignored) {
+        if (call == null) return;
+        String pkg = call.getString("package");
+        run(appsPool, call, () -> call.resolve(result("app", AppsInspector.one(getContext(), pkg))));
+    }
+
+    /** Asks the user to clear every app's cache in shared storage (Android 11 and later, with all files access). */
+    @PluginMethod
+    public void clearAppCaches(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.reject("Clearing every app's cache needs Android 11 or later");
+            return;
+        }
+        if (!hasStorageAccess()) {
+            call.reject("Clearing every app's cache needs all files access");
+            return;
+        }
+        try {
+            startActivityForResult(call, new Intent(StorageManager.ACTION_CLEAR_APP_CACHE), "clearCacheResult");
+        } catch (ActivityNotFoundException e) {
+            call.reject("This device cannot clear app caches from here");
+        }
+    }
+
+    @ActivityCallback
+    private void clearCacheResult(PluginCall call, ActivityResult outcome) {
+        if (call != null) call.resolve(result("cleared", outcome.getResultCode() == Activity.RESULT_OK));
+    }
+
+    /** The system's own "Free up space" screen. */
+    @PluginMethod
+    public void manageStorage(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) {
+            call.reject("This device has no storage manager");
+            return;
+        }
+        try {
+            startActivityForResult(call, new Intent(StorageManager.ACTION_MANAGE_STORAGE), "manageStorageResult");
+        } catch (ActivityNotFoundException e) {
+            call.reject("This device has no storage manager");
+        }
+    }
+
+    @ActivityCallback
+    private void manageStorageResult(PluginCall call, ActivityResult ignored) {
+        if (call != null) call.resolve();
+    }
+
+    // Shared storage by kind of file
+
+    @PluginMethod
+    public void mediaSummary(PluginCall call) {
+        run(mediaPool, call, () -> call.resolve(MediaCategories.summary(getContext())));
+    }
+
+    @PluginMethod
+    public void mediaFiles(PluginCall call) {
+        Object kind = call.getData().opt("kind");
+        if (!MediaCategories.isKind(kind)) {
+            call.reject("Unknown kind of file", "EINVAL");
+            return;
+        }
+        Long limit = countArg(call, "limit");
+        if (limit == null) return;
+        int cap = (int) Math.min(limit, 2000);
+        run(mediaPool, call, () -> call.resolve(MediaCategories.files(getContext(), (String) kind, cap)));
+    }
+
     // Other apps
 
     private static String mimeTypeOf(String name) {
@@ -419,6 +624,63 @@ public class DiskGroveNativePlugin extends Plugin {
                 }
             });
         });
+    }
+
+    /**
+     * Offers files to the apps that can receive them. The read grant is given explicitly, with the files
+     * in the intent's ClipData: Android 17 asks apps not to rely on ACTION_SEND granting it implicitly.
+     */
+    @PluginMethod
+    public void shareFiles(PluginCall call) {
+        JSArray paths = call.getArray("paths");
+        if (paths == null || paths.length() == 0 || paths.length() > 100) {
+            call.reject("Expected between 1 and 100 paths", "EINVAL");
+            return;
+        }
+        run(fsPool, call, () -> {
+            ArrayList<Uri> uris = new ArrayList<>();
+            String type = null;
+            for (int i = 0; i < paths.length(); i++) {
+                Object path = paths.opt(i);
+                if (!isAbsolutePath(path)) throw new NativeFs.FsException("EINVAL", "Expected an absolute path");
+                if (!OsConstants.S_ISREG(NativeFs.stat((String) path).st_mode)) {
+                    throw new NativeFs.FsException("EISDIR", "Only files can be shared");
+                }
+                File file = new File((String) path);
+                uris.add(FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file));
+                String fileType = mimeTypeOf(file.getName());
+                type = type == null || type.equals(fileType) ? fileType : commonType(type, fileType);
+            }
+            Intent send;
+            if (uris.size() == 1) {
+                send = new Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.get(0));
+            } else {
+                send = new Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+            }
+            ClipData clip = ClipData.newRawUri(null, uris.get(0));
+            for (int i = 1; i < uris.size(); i++) clip.addItem(new ClipData.Item(uris.get(i)));
+            send.setType(type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            send.setClipData(clip);
+            Intent chooser = Intent.createChooser(send, null);
+            getBridge().executeOnMainThread(() -> {
+                try {
+                    getActivity().startActivity(chooser);
+                    call.resolve();
+                } catch (ActivityNotFoundException e) {
+                    call.reject("No app on this device can receive these files");
+                }
+            });
+        });
+    }
+
+    /** image/* for a JPEG and a PNG, and any type for files that share nothing. */
+    private static String commonType(String a, String b) {
+        int slashA = a.indexOf('/');
+        int slashB = b.indexOf('/');
+        if (slashA > 0 && slashB > 0 && a.substring(0, slashA).equals(b.substring(0, slashB))) {
+            return a.substring(0, slashA) + "/*";
+        }
+        return "*/*";
     }
 
     @PluginMethod

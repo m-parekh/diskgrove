@@ -1,6 +1,7 @@
 import { MAX_PREVIEW_READ, mediaTypeOf } from '@shared/preview'
 import { DEFAULT_SETTINGS, sanitizeSettings, withRecent } from '@shared/settings'
 import type {
+  AndroidFeatures,
   AppSettings,
   DiskGroveAPI,
   DriveInfo,
@@ -26,6 +27,7 @@ import {
   asSort
 } from '../main/validate'
 import { statsOf, type DiskGroveNativePlugin } from './native-api'
+import { createAndroidFeatures, MAX_SHARE_FILES } from './features'
 import { AndroidScanner, resolveScanRoot } from './scanner'
 
 /** The path the app's WebView serves scanned media from; MainActivity answers these requests. */
@@ -108,8 +110,11 @@ export interface AndroidApiOptions {
  */
 export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
   scanner: AndroidScanner
+  android: AndroidFeatures
   /** Runs the back-button handlers; returns whether one of them took the press. */
   handleBack(): boolean
+  /** Tells the page the user came back to the app. */
+  handleResume(): void
 } {
   const { native, origin, applyFontScale, minimize } = options
   const store = new SettingsStore(options.storage)
@@ -120,6 +125,7 @@ export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
   const progress = new Emitter<ScanProgress>()
   const complete = new Emitter<ScanComplete>()
   const dupProgress = new Emitter<DupProgress>()
+  const resumed = new Emitter<void>()
   let backHandlers: Array<() => boolean> = []
 
   scanner.onProgress = (p) => progress.emit(p)
@@ -157,6 +163,24 @@ export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
     }
   }
 
+  function scanChanged(): void {
+    if (!lastComplete) return
+    lastComplete = scanner.finish({
+      total: lastComplete.totalSpace,
+      free: lastComplete.freeSpace,
+      volumeRoot: lastComplete.isVolumeRoot
+    })
+  }
+
+  const android = createAndroidFeatures({
+    native,
+    origin,
+    operations,
+    scanner,
+    scanChanged,
+    onResume: (cb) => resumed.on(cb)
+  })
+
   return {
     scanner,
 
@@ -164,6 +188,10 @@ export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
       for (const handler of [...backHandlers].reverse()) if (handler()) return true
       minimize?.()
       return false
+    },
+
+    handleResume() {
+      resumed.emit()
     },
 
     async getMeta() {
@@ -244,6 +272,18 @@ export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
       throw new Error('Android has no file manager view to show items in')
     },
 
+    // The share sheet is the confirmation here: nothing is sent until the user picks an app there.
+    shareItems: (targets) =>
+      operations.run('sharing', async () => {
+        const nodes = [...new Set(asPathList(targets))].map((p) => scannedNode(p))
+        if (nodes.some((n) => n.kind !== 'file')) throw new Error('Only files can be shared')
+        if (nodes.length === 0 || nodes.length > MAX_SHARE_FILES) {
+          throw new Error(`Share between 1 and ${MAX_SHARE_FILES} files at a time`)
+        }
+        for (const node of nodes) await scanner.assertCurrent(node.path, 'act')
+        await native.shareFiles({ paths: nodes.map((n) => n.path) })
+      }),
+
     async readFile(target, offset, length) {
       const node = scannedFile(target)
       await scanner.assertCurrent(node.path, 'read')
@@ -274,12 +314,7 @@ export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
         const { confirmed } = await native.confirm({ title: label, message, detail, confirm: label })
         if (!confirmed) return { mode: deleteMode, deleted: [], failed: [] }
         const result = await scanner.deleteMany(paths, deleteMode)
-        if (lastComplete)
-          lastComplete = scanner.finish({
-            total: lastComplete.totalSpace,
-            free: lastComplete.freeSpace,
-            volumeRoot: lastComplete.isVolumeRoot
-          })
+        scanChanged()
         return result
       }),
 
@@ -353,6 +388,8 @@ export function createAndroidApi(options: AndroidApiOptions): DiskGroveAPI & {
       return () => {
         backHandlers = backHandlers.filter((h) => h !== cb)
       }
-    }
+    },
+
+    android
   }
 }

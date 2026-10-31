@@ -75,15 +75,33 @@ APK, under a CSP that allows the app's own scripts and no connections. The app
 requests no `INTERNET` permission.
 
 DiskGrove asks for All files access (`MANAGE_EXTERNAL_STORAGE`) on Android 11
-and later, and for the storage permissions before that. App backups are off.
-Deletion waits for a native dialog, and dismissing it deletes nothing. Opening a
-file shows the system app chooser every time; the chosen app gets read access to
-that file only, through a FileProvider that is not exported. Previews of
-images, audio and video stream from a path on the app's own origin that answers
-only GET requests for those types, with `nosniff` and a CSP that blocks scripts;
-it is not limited to scanned files. Reports are saved through the system file
-picker. Settings and recent scans stay in the WebView's storage inside the app's
-private data.
+and later, and for the storage permissions before that. It also holds
+`QUERY_ALL_PACKAGES` to list every installed app, `REQUEST_DELETE_PACKAGES` to
+open Android's uninstall dialog, and `PACKAGE_USAGE_STATS`, which does nothing
+until the user turns on usage access in Settings; with it the app reads each
+app's code, data and cache sizes and when it was last used. These are the most
+access to storage and apps that Android offers an ordinary app. Android 17
+adds no file-access limits beyond scoped storage: other apps' `Android/data`
+and `Android/obb` folders stay closed even with All files access. Google Play
+restricts All files access and the full app list, which is one reason DiskGrove
+ships as an APK.
+
+App backups and transfers to a new device are off (`allowBackup="false"` and
+data extraction rules that exclude everything). Deletion waits for a native
+dialog, and dismissing it deletes nothing. File lists by kind come from
+MediaStore, and `src/android/features.ts` acts only on files in the latest list
+of each kind and apps in the latest app list, as `api.ts` does with scanned
+paths. Uninstalling,
+clearing an app's cache and clearing shared caches always go through Android's
+own screens and dialogs. Opening a file shows the system app chooser every
+time; opening or sharing gives the chosen app read access to those files only
+(at most 100 at a time), through a FileProvider that is not exported. Previews
+of images, audio and video, and thumbnails of images and videos, stream from
+paths on the app's own origin that answer only GET requests for those types,
+with `nosniff` and a CSP that blocks scripts; they are not limited to listed
+files. App icons come from a path that accepts only a package name. Reports are
+saved through the system file picker. Settings and recent scans stay in the
+WebView's storage inside the app's private data.
 
 ## Limits
 

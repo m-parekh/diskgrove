@@ -155,7 +155,9 @@ final class NativeFs {
         StructStat st = stat(path);
         if (!OsConstants.S_ISREG(st.st_mode)) throw new FsException("EINVAL", "Only regular files can be read");
         try {
-            FileDescriptor fd = Os.open(path, OsConstants.O_RDONLY | OsConstants.O_NONBLOCK | OsConstants.O_CLOEXEC, 0);
+            // OsConstants only has O_CLOEXEC from Android 8.1; the app starts no processes for an fd to leak into.
+            int cloexec = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 ? OsConstants.O_CLOEXEC : 0;
+            FileDescriptor fd = Os.open(path, OsConstants.O_RDONLY | OsConstants.O_NONBLOCK | cloexec, 0);
             if (!OsConstants.S_ISREG(Os.fstat(fd).st_mode)) {
                 close(fd);
                 throw new FsException("EINVAL", "Only regular files can be read");

@@ -94,6 +94,7 @@ interface ScanContextValue {
   pendingDelete: NodeSummary[] | null
   previewItem: NodeSummary | null
   toast: string | null
+  showToast: (message: string) => void
   setTab: (tab: RightTab) => void
   setSort: (sort: SortSpec) => void
   setQuery: (q: string) => void
@@ -675,6 +676,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       pendingDelete,
       previewItem,
       toast,
+      showToast,
       setTab,
       setSort,
       setQuery: updateQuery,
@@ -736,6 +738,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       pendingDelete,
       previewItem,
       toast,
+      showToast,
       applySettings,
       refreshDrives,
       startScan,

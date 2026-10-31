@@ -1,4 +1,13 @@
 import type { EntryStats } from '../main/file-identity'
+import type {
+  AndroidAccess,
+  AppList,
+  DeviceStorage,
+  InstalledApp,
+  MediaFile,
+  MediaKind,
+  MediaSummary
+} from '@shared/types'
 
 /** What lstat or stat reported, as numbers the shared identity checks compare. */
 export interface NativeStats extends EntryStats {
@@ -78,6 +87,29 @@ export interface DiskGroveNativePlugin {
   home(): Promise<{ path: string }>
   /** Colours the area behind the status and navigation bars, with icons that suit it. */
   setWindowColors(options: { background: string; dark: boolean }): Promise<void>
+
+  /** What the user has granted, and what this Android version offers. */
+  accessStatus(): Promise<AndroidAccess>
+  /** Opens the usage access switch; resolves with the access once the user is back. */
+  requestUsageAccess(): Promise<AndroidAccess>
+  deviceStorage(): Promise<DeviceStorage>
+  listApps(): Promise<AppList>
+  /** null when the app is not installed. */
+  appInfo(options: { package: string }): Promise<{ app: InstalledApp | null }>
+  openApp(options: { package: string }): Promise<void>
+  /** The system App info page; resolves with the app's figures once the user is back. */
+  appDetails(options: { package: string }): Promise<{ app: InstalledApp | null }>
+  /** Android's uninstall dialog; resolves with the app, or null once it was removed. */
+  uninstallApp(options: { package: string }): Promise<{ app: InstalledApp | null }>
+  /** Android's dialog for clearing every app's cache in shared storage. */
+  clearAppCaches(): Promise<{ cleared: boolean }>
+  /** The system's free-up-space screen; resolves once the user is back. */
+  manageStorage(): Promise<void>
+  mediaSummary(): Promise<MediaSummary>
+  /** The largest `limit` files of a kind, with the count and size of all of them. */
+  mediaFiles(options: { kind: MediaKind; limit: number }): Promise<{ count: number; bytes: number; files: MediaFile[] }>
+  /** Offers regular files to other apps through the share sheet. */
+  shareFiles(options: { paths: string[] }): Promise<void>
 }
 
 /** The error a failed stat reported, carrying its errno name like Node's errors do. */

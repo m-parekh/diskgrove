@@ -8,23 +8,23 @@ Discuss larger features in an issue before starting a PR.
 
 ## Source layout
 
-| Location            | Responsibility                                                                    |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `src/main/`         | Filesystem scanning, file actions, IPC validation, previews, settings and reports |
-| `src/preload/`      | Typed API exposed to the sandboxed renderer                                       |
-| `src/shared/`       | Data types, formatting, themes, treemap layout, CSV and ZIP readers               |
-| `src/renderer/src/` | React views, scan state and the PDF, Office and media previews                    |
-| `src/android/`      | The Android app's API, scanner and entry page, over the native plugin             |
-| `android/`          | Capacitor's Android project and the Java plugin for files, volumes and dialogs    |
-| `resources/`        | App icon, Windows uninstall hooks and the macOS/Linux uninstall script            |
-| `scripts/`          | Icon generation and the bundled third-party license list                          |
-| `tests/`            | Filesystem fixtures, boundary regression and uninstall script tests               |
-| `benchmarks/`       | Scanner and disk benchmarks, run with `npm run benchmark`                         |
+| Location            | Responsibility                                                                     |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `src/main/`         | Filesystem scanning, file actions, IPC validation, previews, settings and reports  |
+| `src/preload/`      | Typed API exposed to the sandboxed renderer                                        |
+| `src/shared/`       | Data types, formatting, themes, treemap layout, CSV and ZIP readers                |
+| `src/renderer/src/` | React views, scan state and the PDF, Office and media previews                     |
+| `src/android/`      | The Android app's API, scanner, app and media features and entry page              |
+| `android/`          | Capacitor's Android project and the Java plugin for files, apps, media and dialogs |
+| `resources/`        | App icon, Windows uninstall hooks and the macOS/Linux uninstall script             |
+| `scripts/`          | Icon generation and the bundled third-party license list                           |
+| `tests/`            | Filesystem fixtures, boundary regression and uninstall script tests                |
+| `benchmarks/`       | Scanner and disk benchmarks, run with `npm run benchmark`                          |
 
 Filesystem access belongs in the main process. Validate renderer arguments there
 and keep file-action confirmation and identity checks at that boundary. On
-Android, `src/android/api.ts` is that boundary: it applies the same validators
-before calling the Java plugin.
+Android, `src/android/api.ts` and `src/android/features.ts` are that boundary:
+they apply the same validators before calling the Java plugin.
 
 Vite owns build output. Do not emit JavaScript into `src/`, where it can shadow
 TypeScript sources.
@@ -180,7 +180,17 @@ the filesystem through the `DiskGroveNative` Java plugin instead of Node's
 `fs`. `tsconfig.android.json` typechecks that code without Node types, and
 `node:path` resolves to `src/android/shims/path.ts` in the Android build.
 
-Install JDK 21 and the Android SDK (platform 36 and platform tools), set
+On Android the start view is a home screen
+(`src/renderer/src/components/android/`) with Storage, Apps and Clean tabs and
+an access page. Its data comes from `window.diskgrove.android`, which
+`src/android/features.ts` implements over the plugin: `AppsInspector.java`
+reads installed apps and their sizes, `MediaCategories.java` sorts shared
+storage by kind through MediaStore, and `MediaWebViewClient.java` serves file
+thumbnails and app icons on the app's own origin. App sizes and last use need
+usage access, which the user grants in Settings; the app is granted the full
+app list and uninstall requests at install.
+
+Install JDK 21 and the Android SDK (platform 37 and platform tools), set
 `ANDROID_HOME` and `JAVA_HOME`, then:
 
 ```sh
@@ -202,7 +212,9 @@ make changes elsewhere. The app's version comes from `package.json`.
 ## Android smoke test
 
 The instrumented tests run the **release APK**, not a mock filesystem or a
-debug-only build. On a disposable API 30+ emulator with a phone-sized display:
+debug-only build. On a disposable API 30+ emulator with a phone-sized display,
+ideally one with the newest system image (`system-images;android-37;google_apis;arm64-v8a`
+or `x86_64`):
 
 ```sh
 npm run android:sync
@@ -214,8 +226,12 @@ cd android
 It checks the responsive scan UI, exact scan totals,
 search, duplicate hashing (including a sample-hash collision), file reads,
 media ranges, rescanning, and cancelling/accepting the native delete dialog.
-It changes the app's all-files-access setting and recent scans, so do not run
-it against an installation whose settings you need to keep. Tests require API
+It also checks the access page and the home screen's tabs, the app list with
+sizes and icons, files by kind with thumbnails, deleting a file from those
+lists, and that Back at the scan root returns home.
+It changes the app's all-files-access and usage-access settings and recent
+scans, so do not run it against an installation whose settings you need to
+keep. Tests require API
 30 or later. Test the permission gate manually from a fresh installation:
 revoking all-files access terminates the app, including in-process instrumentation.
 The legacy permission flow still needs manual testing.
@@ -239,6 +255,14 @@ screen:
 4. Open a file with another app, cancel a delete prompt, then delete a
    disposable file and confirm that it is gone.
 5. Export each format through the system file picker and check the files.
-6. Press Back through dialogs, panes and folders, and check that the app goes to
-   the background at the scan root.
+6. Press Back through dialogs, panes and folders, and check that it returns to
+   the home screen at the scan root. On the home screen, check that Back clears
+   a selection, leaves a list, returns to the Storage tab and then puts the app
+   in the background.
 7. Switch between light and dark themes and change the font size.
+8. From a fresh installation, turn on usage access from the access page and
+   check that it shows as allowed on return. On the Apps tab, open App info and
+   come back, and uninstall a disposable app through Android's dialog.
+9. Share a few files from a list, use **Clear shared caches** and **Free up
+   space** on the Clean tab, and check that installing or removing an app or
+   a photo elsewhere shows up when you return to DiskGrove.

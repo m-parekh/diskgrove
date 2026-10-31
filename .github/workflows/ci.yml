@@ -54,5 +54,5 @@ jobs:
             package-lock.json
       - run: npm ci
       - run: npm run android:sync
-      - run: ./gradlew assembleRelease assembleReleaseAndroidTest --no-daemon --console=plain
+      - run: ./gradlew assembleRelease assembleReleaseAndroidTest lintRelease --no-daemon --console=plain
         working-directory: android

@@ -1,13 +1,22 @@
 package io.github.tanmay73.diskgrove;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.ThumbnailUtils;
 import android.net.Uri;
+import android.os.Build;
+import android.provider.MediaStore;
 import android.system.OsConstants;
+import android.util.Size;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeWebViewClient;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
@@ -20,12 +29,19 @@ import java.util.regex.Pattern;
 /**
  * Streams scanned media files to the page's img, video and audio elements, with the byte ranges video
  * seeking asks for. It mirrors mediaResponse in src/main/preview.ts; the page asks for these files
- * through mediaUrl in src/android/api.ts.
+ * through mediaUrl in src/android/api.ts. It also serves small thumbnails and app icons for the
+ * Android home screen's lists, through thumbnailUrl and iconUrl there.
  */
 class MediaWebViewClient extends BridgeWebViewClient {
 
     /** MEDIA_PATH in src/android/api.ts. */
     static final String MEDIA_PATH = "/_diskgrove_media_";
+    /** THUMB_PATH and ICON_PATH in src/android/features.ts. */
+    static final String THUMB_PATH = "/_diskgrove_thumb_";
+    static final String ICON_PATH = "/_diskgrove_icon_";
+
+    private static final int THUMB_SIZE = 256;
+    private static final int ICON_SIZE = 96;
 
     private static final Pattern RANGE = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
     private static final int SNIFF_BYTES = 16;
@@ -40,18 +56,82 @@ class MediaWebViewClient extends BridgeWebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         Uri url = request.getUrl();
-        if (
-            MEDIA_PATH.equals(url.getPath()) &&
-            bridge.getScheme().equals(url.getScheme()) &&
-            bridge.getHost().equals(url.getHost())
-        ) {
-            return serve(request);
+        if (bridge.getScheme().equals(url.getScheme()) && bridge.getHost().equals(url.getHost())) {
+            String path = url.getPath();
+            if (MEDIA_PATH.equals(path)) return serve(request);
+            if (THUMB_PATH.equals(path)) return thumbnail(request);
+            if (ICON_PATH.equals(path)) return icon(bridge.getContext(), request);
         }
         return super.shouldInterceptRequest(view, request);
     }
 
     private static boolean isMediaType(String type) {
         return type != null && (type.startsWith("image/") || type.startsWith("audio/") || type.startsWith("video/"));
+    }
+
+    private static WebResourceResponse bytes(String type, byte[] body) {
+        Map<String, String> headers = baseHeaders();
+        headers.remove("Accept-Ranges");
+        headers.put("Content-Length", Integer.toString(body.length));
+        return new WebResourceResponse(type, null, 200, "OK", headers, new ByteArrayInputStream(body));
+    }
+
+    /** A small JPEG of an image or video's first frame, far lighter for a list than the file itself. */
+    @SuppressWarnings("deprecation")
+    static WebResourceResponse thumbnail(WebResourceRequest request) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) return empty(405, "Method Not Allowed", null);
+        Uri url = request.getUrl();
+        String path = url.getQueryParameter("path");
+        String type = url.getQueryParameter("type");
+        if (path == null || !path.startsWith("/")) return empty(404, "Not Found", null);
+        boolean video = type != null && type.startsWith("video/");
+        if (!video && (type == null || !type.startsWith("image/"))) return empty(415, "Unsupported Media Type", null);
+        Bitmap bitmap = null;
+        try {
+            if (!OsConstants.S_ISREG(NativeFs.stat(path).st_mode)) return empty(404, "Not Found", null);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Size size = new Size(THUMB_SIZE, THUMB_SIZE);
+                File file = new File(path);
+                bitmap = video
+                    ? ThumbnailUtils.createVideoThumbnail(file, size, null)
+                    : ThumbnailUtils.createImageThumbnail(file, size, null);
+            } else {
+                bitmap = video
+                    ? ThumbnailUtils.createVideoThumbnail(path, MediaStore.Images.Thumbnails.MINI_KIND)
+                    : decodeSampled(path, THUMB_SIZE);
+            }
+            if (bitmap == null) return empty(404, "Not Found", null);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out);
+            return bytes("image/jpeg", out.toByteArray());
+        } catch (Exception e) {
+            return empty(404, "Not Found", null);
+        } finally {
+            if (bitmap != null) bitmap.recycle();
+        }
+    }
+
+    private static Bitmap decodeSampled(String path, int target) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(path, bounds);
+        int sample = 1;
+        while (bounds.outWidth / (sample * 2) >= target && bounds.outHeight / (sample * 2) >= target) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        return BitmapFactory.decodeFile(path, options);
+    }
+
+    /** An installed app's icon. */
+    static WebResourceResponse icon(Context context, WebResourceRequest request) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) return empty(405, "Method Not Allowed", null);
+        String pkg = request.getUrl().getQueryParameter("package");
+        if (!AppsInspector.isPackageName(pkg)) return empty(404, "Not Found", null);
+        try {
+            return bytes("image/png", AppsInspector.iconPng(context, pkg, ICON_SIZE));
+        } catch (Exception e) {
+            return empty(404, "Not Found", null);
+        }
     }
 
     static WebResourceResponse serve(WebResourceRequest request) {

@@ -202,6 +202,122 @@ export interface DupProgress {
   total: number
 }
 
+/** What the user has let DiskGrove reach on Android, and what this Android version offers. */
+export interface AndroidAccess {
+  sdk: number
+  /** All files access from Android 11; the storage permission before it. */
+  files: boolean
+  /** All files access is a switch in the system settings (Android 11+), not a permission prompt. */
+  allFilesSetting: boolean
+  /** Usage access: other apps' storage figures and when each app was last used. */
+  usage: boolean
+  /** Android reports app, data and cache sizes (8.0+). */
+  appSizes: boolean
+  /** Every installed app is visible, not only those Android shows any app. Granted at install. */
+  packages: boolean
+  /** May hand apps to Android's uninstall dialog. Granted at install. */
+  uninstall: boolean
+  /** Android can clear every app's cache in shared storage at the user's request (11+). */
+  clearCache: boolean
+}
+
+export interface InstalledApp {
+  package: string
+  label: string
+  version: string
+  installed: number
+  updated: number
+  system: boolean
+  /** A preinstalled app with an update on top, which uninstalling removes. */
+  updatedSystem: boolean
+  enabled: boolean
+  launchable: boolean
+  /** DiskGrove itself. */
+  self: boolean
+  /** Size of the app's APK files; known without usage access. */
+  apkBytes: number
+  /** The rest are known only with usage access, except for DiskGrove itself. */
+  appBytes?: number
+  /** User data, not counting the cache. */
+  dataBytes?: number
+  cacheBytes?: number
+  /** The part of the cache kept in shared storage (Android 12+). */
+  externalCacheBytes?: number
+  /** When the app was last used; 0 when not in about two years; absent without usage access. */
+  lastUsed?: number
+}
+
+export interface AppList {
+  apps: InstalledApp[]
+  usageAccess: boolean
+}
+
+/** Every file in shared storage has one of these types. */
+export type MediaType = 'images' | 'videos' | 'audio' | 'documents' | 'archives' | 'apks' | 'other'
+/** Groups of files across types. */
+export type MediaCollection = 'downloads' | 'screenshots' | 'oldScreenshots' | 'large' | 'trash'
+export type MediaKind = MediaType | MediaCollection
+
+export interface FileTotal {
+  count: number
+  bytes: number
+}
+
+export type MediaSummary = Record<MediaKind, FileTotal>
+
+export interface MediaFile {
+  path: string
+  name: string
+  size: number
+  modified: number
+  mime: string
+  type: MediaType
+}
+
+/** The largest files of a kind, with the count and size of all of them. */
+export interface MediaFileList extends FileTotal {
+  kind: MediaKind
+  files: MediaFile[]
+}
+
+export interface DeviceStorage {
+  total: number
+  free: number
+}
+
+/** Features only the Android app has: installed apps, the media index and the system's storage tools. */
+export interface AndroidFeatures {
+  access(): Promise<AndroidAccess>
+  /** Opens the system's all files access switch (or the permission prompt) and reports what was chosen. */
+  requestFilesAccess(): Promise<AndroidAccess>
+  /** Opens the system's usage access switch and reports what was chosen. */
+  requestUsageAccess(): Promise<AndroidAccess>
+  deviceStorage(): Promise<DeviceStorage>
+  listApps(): Promise<AppList>
+  /** The app's current figures; null once it is uninstalled. */
+  appInfo(pkg: string): Promise<InstalledApp | null>
+  openApp(pkg: string): Promise<void>
+  /** Shows the system's App info page; resolves with the app's figures once the user comes back. */
+  appDetails(pkg: string): Promise<InstalledApp | null>
+  /** Shows Android's uninstall dialog; resolves null when the app was removed. */
+  uninstallApp(pkg: string): Promise<InstalledApp | null>
+  /** Asks Android to clear every app's cache in shared storage; true when it did. */
+  clearAppCaches(): Promise<boolean>
+  /** Opens the system's free-up-space screen. */
+  manageStorage(): Promise<void>
+  mediaSummary(): Promise<MediaSummary>
+  mediaFiles(kind: MediaKind, limit: number): Promise<MediaFileList>
+  /** Files from a mediaFiles list. */
+  openMediaFile(path: string): Promise<void>
+  shareMediaFiles(paths: string[]): Promise<void>
+  deleteMediaFiles(paths: string[]): Promise<DeleteResult>
+  iconUrl(pkg: string): string
+  /** A small preview image of a photo or video; null for other files. */
+  thumbnailUrl(file: Pick<MediaFile, 'path' | 'mime' | 'type'>): string | null
+  /** Runs when the user comes back to the app, such as from the system settings. */
+  onResume(cb: () => void): () => void
+}
+
 export interface DiskGroveAPI {
   getMeta(): Promise<AppMeta>
   listDrives(): Promise<DriveInfo[]>
@@ -250,4 +366,7 @@ export interface DiskGroveAPI {
    * does, the app goes to the background.
    */
   onBackButton?(cb: () => boolean): () => void
+  /** Offers scanned files to other apps (Android's share sheet). */
+  shareItems?(paths: string[]): Promise<void>
+  android?: AndroidFeatures
 }

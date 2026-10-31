@@ -30,6 +30,7 @@
     "src/preload/**/*",
     "src/shared/**/*",
     "src/android/api.ts",
+    "src/android/features.ts",
     "src/android/native-api.ts",
     "src/android/scanner.ts",
     "src/android/shims/**/*",

@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ shell: { trashItem: vi.fn() } }))
 import { Scanner } from '../src/main/scanner'
 import { SAMPLE_HEAD, SAMPLE_TAIL, type ScanResults } from '../src/main/scan-results'
-import type { DuplicateGroup } from '@shared/types'
+import type { AndroidAccess, DuplicateGroup, InstalledApp, MediaFile, MediaKind, MediaSummary } from '@shared/types'
 import { createAndroidApi, MEDIA_PATH, type SettingsStorage } from '../src/android/api'
+import { ICON_PATH, THUMB_PATH } from '../src/android/features'
 import type { DiskGroveNativePlugin, NativeStats, NativeVolume } from '../src/android/native-api'
 import { AndroidScanner, resolveScanRoot } from '../src/android/scanner'
 import * as shim from '../src/android/shims/path'
 import { canOpenFolders, revealLabel, trashName } from '../src/renderer/src/lib/platform'
+import { appTotal, lastActive, lastUsedText, unusedFor } from '@shared/apps'
 
 function toNative(st: Stats): NativeStats {
   const { dev, ino, mode, size, blocks, mtimeMs, atimeMs, ctimeMs, birthtimeMs } = st
@@ -36,6 +38,19 @@ function fakeNative(volumes: NativeVolume[] = []) {
     confirmed: false,
     exportId: 'doc-1' as string | null,
     exports,
+    access: {
+      sdk: 37,
+      files: true,
+      allFilesSetting: true,
+      usage: false,
+      appSizes: true,
+      packages: true,
+      uninstall: true,
+      clearCache: true
+    } as AndroidAccess,
+    apps: [] as InstalledApp[],
+    /** What the media index lists; files of every kind, which mediaFiles picks from by type. */
+    media: [] as MediaFile[],
     async listDir({ path: dir, followLinks }: { path: string; followLinks: boolean }) {
       let names: string[]
       try {
@@ -136,7 +151,49 @@ function fakeNative(volumes: NativeVolume[] = []) {
     async home() {
       return { path: volumes[0]?.path ?? '/storage/emulated/0' }
     },
-    async setWindowColors() {}
+    async setWindowColors() {},
+    async accessStatus() {
+      return { ...native.access }
+    },
+    async requestUsageAccess() {
+      native.access.usage = true
+      return { ...native.access }
+    },
+    async deviceStorage() {
+      return { total: 1000, free: 400 }
+    },
+    async listApps() {
+      return { apps: native.apps.map((a) => ({ ...a })), usageAccess: native.access.usage }
+    },
+    async appInfo({ package: pkg }: { package: string }) {
+      return { app: native.apps.find((a) => a.package === pkg) ?? null }
+    },
+    openApp: vi.fn(async (_options: { package: string }) => undefined),
+    appDetails: vi.fn(async ({ package: pkg }: { package: string }) => ({
+      app: native.apps.find((a) => a.package === pkg) ?? null
+    })),
+    uninstallApp: vi.fn(async ({ package: pkg }: { package: string }) => {
+      native.apps = native.apps.filter((a) => a.package !== pkg)
+      return { app: null }
+    }),
+    clearAppCaches: vi.fn(async () => ({ cleared: true })),
+    manageStorage: vi.fn(async () => undefined),
+    async mediaSummary() {
+      const summary = {} as MediaSummary
+      for (const kind of ['images', 'videos', 'audio', 'documents', 'archives', 'apks', 'other'] as const) {
+        const files = native.media.filter((f) => f.type === kind)
+        summary[kind] = { count: files.length, bytes: files.reduce((n, f) => n + f.size, 0) }
+      }
+      for (const kind of ['downloads', 'screenshots', 'oldScreenshots', 'large', 'trash'] as const)
+        summary[kind] = { count: 0, bytes: 0 }
+      return summary
+    },
+    mediaFiles: vi.fn(async ({ kind, limit }: { kind: MediaKind; limit: number }) => {
+      const files = native.media.filter((f) => f.type === kind).sort((a, b) => b.size - a.size)
+      const bytes = files.reduce((n, f) => n + f.size, 0)
+      return { count: files.length, bytes, files: files.slice(0, limit) }
+    }),
+    shareFiles: vi.fn(async (_options: { paths: string[] }) => undefined)
   }
   return native satisfies DiskGroveNativePlugin
 }
@@ -455,6 +512,157 @@ describe.skipIf(process.platform === 'win32')('Android API', () => {
     expect(api.handleBack()).toBe(false)
     expect(minimize).toHaveBeenCalledOnce()
   })
+
+  it('shares only scanned files, after checking they have not changed', async () => {
+    await buildTree()
+    const many = path.join(root, 'many')
+    await fs.mkdir(many)
+    const manyFiles = Array.from({ length: 101 }, (_, i) => path.join(many, `${i}.txt`))
+    await Promise.all(manyFiles.map((f) => fs.writeFile(f, 'x')))
+    const { api, native } = await scannedApi()
+    const notes = path.join(root, 'notes.txt')
+    await expect(api.shareItems!([path.join(root, 'Music')])).rejects.toThrow(/Only files/)
+    await expect(api.shareItems!([path.join(fixture, 'elsewhere.txt')])).rejects.toThrow(/current scan/)
+    await expect(api.shareItems!(manyFiles)).rejects.toThrow(/between 1 and 100/)
+    await api.shareItems!([notes, notes])
+    expect(native.shareFiles).toHaveBeenCalledWith({ paths: [notes] })
+    await fs.writeFile(notes, 'changed after the scan')
+    await expect(api.shareItems!([notes])).rejects.toThrow()
+    expect(native.shareFiles).toHaveBeenCalledOnce()
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('Android features', () => {
+  const app = (pkg: string, extra: Partial<InstalledApp> = {}): InstalledApp => ({
+    package: pkg,
+    label: pkg,
+    version: '1.0',
+    installed: 1,
+    updated: 1,
+    system: false,
+    updatedSystem: false,
+    enabled: true,
+    launchable: true,
+    self: false,
+    apkBytes: 100,
+    ...extra
+  })
+
+  async function listed(p: string, type: MediaFile['type']): Promise<MediaFile> {
+    const st = await fs.stat(p)
+    return { path: p, name: path.basename(p), size: st.size, modified: st.mtimeMs, mime: '', type }
+  }
+
+  function features(native = fakeNative()) {
+    const api = createAndroidApi({ native, storage: memoryStorage(), origin: 'https://localhost' })
+    return { api, android: api.android, native }
+  }
+
+  it('reports access and asks for more through the system settings', async () => {
+    const { android } = features()
+    expect(await android.access()).toMatchObject({ files: true, usage: false, sdk: 37 })
+    expect(await android.requestUsageAccess()).toMatchObject({ usage: true })
+    expect(await android.requestFilesAccess()).toMatchObject({ files: true, usage: true })
+  })
+
+  it('acts only on apps from the app list', async () => {
+    const native = fakeNative()
+    native.apps = [app('com.example.notes', { cacheBytes: 50 }), app('org.sample.game')]
+    const { android } = features(native)
+    await expect(android.openApp('com.example.notes')).rejects.toThrow(/app list/)
+    const list = await android.listApps()
+    expect(list.apps.map((a) => a.package)).toEqual(['com.example.notes', 'org.sample.game'])
+    await expect(android.openApp('not a package')).rejects.toThrow(/package name/)
+    await expect(android.openApp('com.other.app')).rejects.toThrow(/app list/)
+
+    await android.openApp('com.example.notes')
+    expect(native.openApp).toHaveBeenCalledWith({ package: 'com.example.notes' })
+    expect(await android.appDetails('com.example.notes')).toMatchObject({ cacheBytes: 50 })
+
+    expect(await android.uninstallApp('org.sample.game')).toBeNull()
+    expect(native.uninstallApp).toHaveBeenCalledWith({ package: 'org.sample.game' })
+    // Once Android reports it gone, the app is no longer something to act on.
+    await expect(android.appInfo('org.sample.game')).rejects.toThrow(/app list/)
+    expect(await android.clearAppCaches()).toBe(true)
+  })
+
+  it('lists files by kind and acts only on listed files', async () => {
+    await buildTree()
+    const native = fakeNative()
+    const song = path.join(root, 'Music', 'song.mp3')
+    native.media = [await listed(song, 'audio'), await listed(path.join(root, 'notes.txt'), 'documents')]
+    const { android } = features(native)
+    await expect(android.mediaFiles('everything' as MediaKind, 10)).rejects.toThrow(/kind of file/)
+    await expect(android.openMediaFile(song)).rejects.toThrow(/file list/)
+
+    const audio = await android.mediaFiles('audio', 99999)
+    expect(native.mediaFiles).toHaveBeenLastCalledWith({ kind: 'audio', limit: 2000 })
+    expect(audio).toMatchObject({ kind: 'audio', count: 1, files: [{ path: song }] })
+    await android.openMediaFile(song)
+    expect(native.openFile).toHaveBeenCalledWith({ path: song })
+    await android.shareMediaFiles([song])
+    expect(native.shareFiles).toHaveBeenCalledWith({ paths: [song] })
+    await expect(android.shareMediaFiles([path.join(root, 'notes.txt')])).rejects.toThrow(/file list/)
+    expect((await android.mediaSummary()).audio).toEqual({ count: 1, bytes: audio.bytes })
+  })
+
+  it('deletes listed files only after the system dialog confirms, and skips files that changed', async () => {
+    await buildTree()
+    const native = fakeNative()
+    const song = path.join(root, 'Music', 'song.mp3')
+    const copy = path.join(root, 'Music', 'Albums', 'copy.mp3')
+    native.media = [await listed(song, 'audio'), await listed(copy, 'audio')]
+    const { android } = features(native)
+    await android.mediaFiles('audio', 10)
+
+    expect(await android.deleteMediaFiles([song])).toEqual({ mode: 'permanent', deleted: [], failed: [] })
+    expect(native.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Delete permanently' }))
+    await expect(fs.stat(song)).resolves.toBeTruthy()
+
+    native.confirmed = true
+    await fs.writeFile(copy, 'this file grew after it was listed')
+    const result = await android.deleteMediaFiles([song, copy])
+    expect(result.deleted).toEqual([song])
+    expect(result.failed).toEqual([{ path: copy, error: expect.stringMatching(/changed/) }])
+    await expect(fs.stat(song)).rejects.toThrow()
+    await expect(fs.stat(copy)).resolves.toBeTruthy()
+    // A deleted file leaves the list it came from.
+    await expect(android.openMediaFile(song)).rejects.toThrow(/file list/)
+  })
+
+  it('deletes scanned files through the scan, so its totals stay right', async () => {
+    await buildTree()
+    const native = fakeNative()
+    const notes = path.join(root, 'notes.txt')
+    native.media = [await listed(notes, 'documents')]
+    const { api, android } = features(native)
+    await api.startScan(root, { followLinks: false, skipHidden: false })
+    const before = (await api.getNode(root))!.size
+    await android.mediaFiles('documents', 10)
+    native.confirmed = true
+    expect((await android.deleteMediaFiles([notes])).deleted).toEqual([notes])
+    expect(await api.getNode(notes)).toBeNull()
+    expect((await api.getNode(root))!.size).toBe(before - 11)
+  })
+
+  it('builds icon and thumbnail URLs on the app origin', () => {
+    const { android } = features()
+    const icon = new URL(android.iconUrl('com.example.notes'))
+    expect(icon.origin).toBe('https://localhost')
+    expect(icon.pathname).toBe(ICON_PATH)
+    expect(icon.searchParams.get('package')).toBe('com.example.notes')
+    expect(() => android.iconUrl('../etc')).toThrow(/package name/)
+
+    const photo = { path: '/storage/emulated/0/DCIM/a b#1.jpg', mime: 'image/jpeg', type: 'images' } as const
+    const thumb = new URL(android.thumbnailUrl(photo)!)
+    expect(thumb.pathname).toBe(THUMB_PATH)
+    expect(thumb.searchParams.get('path')).toBe(photo.path)
+    expect(thumb.searchParams.get('type')).toBe('image/jpeg')
+    expect(
+      new URL(android.thumbnailUrl({ path: '/x/clip.bin', mime: '', type: 'videos' })!).searchParams.get('type')
+    ).toBe('video/*')
+    expect(android.thumbnailUrl({ path: '/x/a.pdf', mime: 'application/pdf', type: 'documents' })).toBeNull()
+  })
 })
 
 describe('platform wording', () => {
@@ -466,5 +674,48 @@ describe('platform wording', () => {
     expect(trashName('android')).toBeNull()
     expect(trashName('win32')).toBe('Recycle Bin')
     expect(trashName('linux')).toBe('Trash')
+  })
+})
+
+describe('app usage', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const now = Date.UTC(2026, 0, 31)
+  const app = (over: Partial<InstalledApp>): InstalledApp => ({
+    package: 'com.example',
+    label: 'Example',
+    version: '1',
+    installed: now - 400 * DAY,
+    updated: now - 400 * DAY,
+    system: false,
+    updatedSystem: false,
+    enabled: true,
+    launchable: true,
+    self: false,
+    apkBytes: 10,
+    ...over
+  })
+
+  it('counts an app unopened since a recent install as recently active', () => {
+    const fresh = app({ installed: now - DAY, lastUsed: 0 })
+    expect(lastActive(fresh)).toBe(now - DAY)
+    expect(unusedFor(fresh, 30, now)).toBe(false)
+    expect(lastUsedText(fresh, now)).toBe('Not since it was installed')
+    expect(unusedFor(app({ lastUsed: 0 }), 30, now)).toBe(true)
+    expect(lastUsedText(app({ installed: now - 900 * DAY, lastUsed: 0 }), now)).toBe('Not in the last 2 years')
+  })
+
+  it('knows nothing about use without usage access', () => {
+    expect(lastActive(app({}))).toBeUndefined()
+    expect(unusedFor(app({}), 1, now)).toBe(false)
+    expect(lastUsedText(app({}), now)).toBe('Unknown')
+  })
+
+  it('describes the last use and totals the app', () => {
+    expect(lastUsedText(app({ lastUsed: now - 3 * DAY }), now)).toBe('3 days ago')
+    expect(lastUsedText(app({ lastUsed: now - 2 * DAY + 1 }), now)).toBe('Yesterday')
+    expect(lastUsedText(app({ lastUsed: now - 61 * DAY }), now)).toBe('2 months ago')
+    expect(unusedFor(app({ lastUsed: now - 31 * DAY }), 30, now)).toBe(true)
+    expect(appTotal(app({}))).toBe(10)
+    expect(appTotal(app({ appBytes: 5, dataBytes: 3, cacheBytes: 2 }))).toBe(10)
   })
 })

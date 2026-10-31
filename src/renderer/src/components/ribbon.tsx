@@ -296,7 +296,7 @@ function ExportMenu() {
   )
 }
 
-function ThemeMenu() {
+export function ThemeMenu() {
   const { settings, applySettings } = useScan()
   return (
     <DropdownMenu>
@@ -347,7 +347,7 @@ function ThemeMenu() {
   )
 }
 
-function SettingsMenu() {
+export function SettingsMenu() {
   const { settings, applySettings } = useScan()
   return (
     <DropdownMenu>

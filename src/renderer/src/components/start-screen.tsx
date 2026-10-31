@@ -41,7 +41,7 @@ function DriveRing({ used, total }: { used: number; total: number }) {
 }
 
 export function StartScreen() {
-  const { meta, drives, settings, startScan, refreshDrives } = useScan()
+  const { meta, drives, startScan, refreshDrives } = useScan()
   const android = isAndroid(meta?.platform)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -97,26 +97,7 @@ export function StartScreen() {
           </div>
         </div>
 
-        {settings.recents.length > 0 ? (
-          <div>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent scans</h2>
-            <div className="divide-y overflow-hidden rounded-xl border bg-card">
-              {settings.recents.map((r, i) => (
-                <button
-                  key={r.path}
-                  className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-accent/60 max-sm:flex-col max-sm:items-start max-sm:gap-0.5"
-                  style={{ animationDelay: `${180 + i * 50}ms` }}
-                  onClick={() => void startScan(r.path)}
-                >
-                  <span className="truncate font-medium max-sm:max-w-full">{r.path}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {formatBytes(r.size)} · {formatNumber(r.files)} files · {formatDate(r.scannedAt)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        <RecentScans />
 
         <p className="text-xs text-muted-foreground">DiskGrove {__APP_VERSION__}</p>
       </div>
@@ -124,7 +105,43 @@ export function StartScreen() {
   )
 }
 
-function DriveCard({ drive, delay, onScan }: { drive: DriveInfo; delay: number; onScan: () => void }) {
+/** The scans the user ran lately; tapping one scans it again. */
+export function RecentScans() {
+  const { settings, startScan } = useScan()
+  if (settings.recents.length === 0) return null
+  return (
+    <div>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent scans</h2>
+      <div className="divide-y overflow-hidden rounded-xl border bg-card">
+        {settings.recents.map((r, i) => (
+          <button
+            key={r.path}
+            className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-accent/60 max-sm:flex-col max-sm:items-start max-sm:gap-0.5"
+            style={{ animationDelay: `${180 + i * 50}ms` }}
+            onClick={() => void startScan(r.path)}
+          >
+            <span className="truncate font-medium max-sm:max-w-full">{r.path}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {formatBytes(r.size)} · {formatNumber(r.files)} files · {formatDate(r.scannedAt)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function DriveCard({
+  drive,
+  delay,
+  onScan,
+  disabled
+}: {
+  drive: DriveInfo
+  delay: number
+  onScan: () => void
+  disabled?: boolean
+}) {
   const Icon = kindIcon(drive.kind)
   const ratio = drive.total ? drive.used / drive.total : 0
   return (
@@ -147,7 +164,9 @@ function DriveCard({ drive, delay, onScan }: { drive: DriveInfo; delay: number; 
         </p>
         <Progress value={ratio * 100} className="mt-2" />
       </div>
-      <Button onClick={onScan}>Scan</Button>
+      <Button onClick={onScan} disabled={disabled}>
+        Scan
+      </Button>
     </Card>
   )
 }

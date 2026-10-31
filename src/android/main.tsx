@@ -1,10 +1,9 @@
 import { StrictMode, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App as CapacitorApp } from '@capacitor/app'
-import { FolderLock } from 'lucide-react'
+import type { AndroidAccess } from '@shared/types'
 import App from '@/App'
-import { AppLogo } from '@/components/app-logo'
-import { Button } from '@/components/ui/button'
+import { AccessOnboarding } from '@/components/android/access-panel'
 import { ErrorBoundary } from '@/error-boundary'
 import { createAndroidApi } from './api'
 import { DiskGroveNative } from './native'
@@ -84,59 +83,49 @@ void CapacitorApp.addListener('backButton', () => {
   api.handleBack()
 })
 
-/** Shows the app once it may read shared storage; until then, explains why it needs to. */
-function StorageGate({ children }: { children: ReactNode }) {
-  const [granted, setGranted] = useState<boolean | null>(null)
-  const [asking, setAsking] = useState(false)
+// Access is granted in the system settings, so screens look again whenever the user comes back.
+void CapacitorApp.addListener('resume', () => api.handleResume())
+
+const ONBOARDED_KEY = 'diskgrove:access-onboarded'
+
+/**
+ * Asks for access before the app first shows, and again on launch while all files access is off. The
+ * user may go on with less: each part of the app says what it is missing.
+ */
+function AccessGate({ children }: { children: ReactNode }) {
+  const [access, setAccess] = useState<AndroidAccess | null>(null)
+  const [dismissed, setDismissed] = useState(false)
+  const [onboarded] = useState(() => window.localStorage.getItem(ONBOARDED_KEY) === '1')
 
   const check = useCallback(async () => {
     try {
-      setGranted((await DiskGroveNative.storageAccess()).granted)
+      setAccess(await api.android.access())
     } catch {
-      setGranted(false)
+      setAccess(null)
+      setDismissed(true)
     }
   }, [])
 
   useEffect(() => {
     void check()
-    // Access is granted in the system settings, so look again whenever the app comes back.
-    const listener = CapacitorApp.addListener('resume', () => void check())
-    return () => void listener.then((l) => l.remove())
+    return api.android.onResume(() => void check())
   }, [check])
 
-  if (granted === null) return null
-  if (granted) return children
+  // Decided once, at launch: granting access on the screen should not hide it before the user continues.
+  const [needed, setNeeded] = useState<boolean | null>(null)
+  if (needed === null && (access || dismissed)) setNeeded(!onboarded || !access?.files)
 
+  if (needed === null) return null
+  if (!needed || dismissed || !access) return children
   return (
-    <main className="flex h-full flex-col items-center justify-center gap-5 overflow-auto bg-background p-6 text-center">
-      <div className="flex items-center gap-2 text-lg font-semibold">
-        <AppLogo className="size-5 text-muted-foreground" /> DiskGrove
-      </div>
-      <FolderLock className="size-12 text-primary" />
-      <div className="max-w-sm space-y-2">
-        <h1 className="text-xl font-semibold">Allow access to your files</h1>
-        <p className="text-sm text-muted-foreground">
-          To measure what takes up space, DiskGrove reads every folder in your device&apos;s shared storage. Android
-          lists this as &ldquo;All files access&rdquo;. Your files are only read on this device and never leave it.
-        </p>
-      </div>
-      <Button
-        size="lg"
-        disabled={asking}
-        onClick={async () => {
-          setAsking(true)
-          try {
-            setGranted((await DiskGroveNative.requestStorageAccess()).granted)
-          } catch {
-            await check()
-          } finally {
-            setAsking(false)
-          }
-        }}
-      >
-        Allow access
-      </Button>
-    </main>
+    <AccessOnboarding
+      access={access}
+      onChange={setAccess}
+      onContinue={() => {
+        window.localStorage.setItem(ONBOARDED_KEY, '1')
+        setDismissed(true)
+      }}
+    />
   )
 }
 
@@ -147,9 +136,9 @@ if (!root) {
   createRoot(root).render(
     <StrictMode>
       <ErrorBoundary>
-        <StorageGate>
+        <AccessGate>
           <App />
-        </StorageGate>
+        </AccessGate>
       </ErrorBoundary>
     </StrictMode>
   )
