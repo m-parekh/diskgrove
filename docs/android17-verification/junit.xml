@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="io.github.tanmay73.diskgrove.NativeIntegrationTest" tests="9" failures="0" errors="0" skipped="0" time="35.142" timestamp="2026-10-31T19:09:40" hostname="localhost">
+  <properties>
+    <property name="device" value="diskgrove_verify_api37(AVD) - 17" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="mediaByteRangesReadRealFiles" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="1.989" />
+  <testcase name="mediaDeletionUpdatesTheMediaIndex" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="1.959" />
+  <testcase name="appsScreenGrantsUsageAccessAndShowsSystemSizes" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="7.435" />
+  <testcase name="onboardingLeadsToTheAndroidHome" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="5.721" />
+  <testcase name="nativeFilesystemRoundTrip" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="1.556" />
+  <testcase name="storageScreenListsDeletesAndRefreshesRealPhotos" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="6.986" />
+  <testcase name="deletionRequiresNativeConfirmation" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="2.624" />
+  <testcase name="androidFeaturesReadTheDevice" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="1.972" />
+  <testcase name="responsiveUiScansRealFiles" classname="io.github.tanmay73.diskgrove.NativeIntegrationTest" time="3.24" />
+</testsuite>

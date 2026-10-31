@@ -1,0 +1,118 @@
+{
+  "testedAtUtc": "2026-10-31T19:09:40Z",
+  "applicationSourceCommit": "222b3171225b2644176f29ac759e340d7ba358a5",
+  "instrumentationSourceSha256": "82a0985426ad3d8e83bf767031d3fe414c6e0440b9699aa6bc1afeffe651be28",
+  "apk": {
+    "variant": "release",
+    "debuggable": false,
+    "versionName": "1.0.0",
+    "targetSdk": 37,
+    "sha256": "c86b4436b0d673adc198462e60a02444fab48c97e9ffc1bdd730cfa0140abb90",
+    "signing": "Generated debug key; not a stable production signing identity"
+  },
+  "device": {
+    "kind": "Isolated Google APIs emulator, Pixel 6 display",
+    "apiLevel": 37,
+    "androidVersion": "17",
+    "fingerprint": "google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys",
+    "systemImage": "system-images;android-37.0;google_apis;arm64-v8a",
+    "resolution": "1080x2400",
+    "densityDpi": 420
+  },
+  "commands": [
+    {
+      "command": "npm run check",
+      "result": "passed",
+      "testsPassed": 172,
+      "testsSkipped": 6
+    },
+    {
+      "command": "npm run build",
+      "result": "passed"
+    },
+    {
+      "command": "npm run android:sync",
+      "result": "passed"
+    },
+    {
+      "workingDirectory": "android",
+      "command": "ANDROID_SERIAL=emulator-5580 caffeinate -i ./gradlew assembleRelease lintRelease connectedReleaseAndroidTest --no-daemon --console=plain",
+      "result": "passed",
+      "note": "caffeinate is a macOS-only wrapper preventing host idle sleep; omit it on other hosts.",
+      "deviceTests": 9,
+      "deviceFailures": 0,
+      "deviceSkipped": 0,
+      "appLintErrors": 0,
+      "appLintWarnings": 4
+    }
+  ],
+  "verifiedFlows": {
+    "apps": [
+      "Limited-access banner and disabled usage-dependent filter before permission",
+      "Usage permission granted through the real Android Settings switch",
+      "All-apps filter and another installed app's detail sheet",
+      "Displayed App, Data, Cache and Total matched an independent StorageStats query",
+      "Native App info launch and return to the same detail sheet"
+    ],
+    "storage": [
+      "Category navigation to the real shared-storage image list",
+      "Decoded thumbnail and file size matched the generated photo",
+      "Back cleared the selection without leaving the list",
+      "Native delete cancellation preserved the file",
+      "Confirmed deletion removed the file, UI row and MediaStore entry",
+      "A photo added while backgrounded appeared on resume"
+    ],
+    "freshInstallManualCheck": [
+      "Onboarding explained All files access, Usage access, package visibility and uninstall requests",
+      "All files access opened the correct Android Settings page",
+      "Enabling the switch and returning updated the onboarding badge to Allowed",
+      "adb appops independently reported MANAGE_EXTERNAL_STORAGE: allow"
+    ]
+  },
+  "evidence": {
+    "junit": "junit.xml",
+    "webChecks": "web-checks.txt",
+    "buildAndTestOutput": "gradle-output.txt",
+    "lint": "lint.xml",
+    "appMeasurements": "apps-ui.json",
+    "storageMeasurements": "storage-ui.json",
+    "appSizesScreenshot": "apps-system-sizes.png",
+    "usageAccessScreenshot": "usage-access-setting.png",
+    "storageListScreenshot": "storage-photo-list.png",
+    "storageRefreshScreenshot": "storage-refreshed.png",
+    "allFilesAccessScreenshot": "all-files-access-return.png"
+  },
+  "googleDocumentationReviewed": [
+    {
+      "url": "https://developer.android.com/about/versions/17/behavior-changes-all",
+      "finding": "Reviewed Android 17 behavior changes, including memory limits and explicit URI grant guidance."
+    },
+    {
+      "url": "https://developer.android.com/about/versions/17/behavior-changes-17",
+      "finding": "Reviewed target-37 behavior, including activity-launch hardening. Settings launches were tested from the foreground."
+    },
+    {
+      "url": "https://developer.android.com/training/data-storage/manage-all-files",
+      "finding": "MANAGE_EXTERNAL_STORAGE requires user approval in Settings and still does not grant another app's private directories."
+    },
+    {
+      "url": "https://developer.android.com/reference/android/app/usage/StorageStats",
+      "finding": "Data includes cache, so cache must be subtracted for a separate Data field. App bytes include OBB files."
+    },
+    {
+      "url": "https://developer.android.com/reference/android/os/storage/StorageManager#ACTION_CLEAR_APP_CACHE",
+      "finding": "The system dialog clears app external cache directories only after user confirmation; it is not direct access to private caches."
+    },
+    {
+      "url": "https://support.google.com/files/answer/9713869?hl=en",
+      "finding": "Files by Google provides explicit cleanup suggestions with confirmation before permanent deletion."
+    }
+  ],
+  "limitations": [
+    "Not tested on physical devices, older Android versions, SD cards or USB volumes.",
+    "No root access or bypass of Android's private-storage restrictions.",
+    "This run did not repeat every external-app, uninstall, share and cache-clearing manual check.",
+    "No version tag or public release was published; GitHub's tag-triggered release job was not run.",
+    "Measurements are observations from this emulator, not fixed expected values for other devices."
+  ]
+}

@@ -116,9 +116,9 @@ The home screen has three tabs:
 Android limits what any app can do, including DiskGrove:
 
 - Other apps' private folders, such as those in `Android/data` and
-  `Android/obb`, cannot be read even with All files access. Their size is
-  counted under each app's data on the Apps tab, and as unreadable in a folder
-  scan.
+  `Android/obb`, cannot be read even with All files access. Android reports
+  their sizes on the Apps tab without exposing their contents. Its app-size
+  figure includes OBB files; data and cache are shown separately.
 - Only Android's App info screen can clear one app's cache. **Clear shared
   caches** asks Android to clear what every app caches in shared storage.
 - Uninstalling always goes through Android's confirmation dialog.

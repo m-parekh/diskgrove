@@ -1,0 +1,58 @@
+Command: npm run check && npm run build
+Sat Oct 31 18:13:14 UTC 2026
+222b3171225b2644176f29ac759e340d7ba358a5
+
+> diskgrove@1.0.0 check
+> npm run format:check && npm run typecheck && npm test
+
+
+> diskgrove@1.0.0 format:check
+> prettier --check .
+
+Checking formatting...
+All matched files use Prettier code style!
+
+> diskgrove@1.0.0 typecheck
+> tsc -b
+
+
+> diskgrove@1.0.0 test
+> vitest run
+
+
+ RUN  v5.0.5 /Users/mparekh/diskgrove
+
+
+ Test Files  18 passed (18)
+      Tests  172 passed | 6 skipped (178)
+   Start at  23:43:17
+   Duration  11.10s (tests 92%, import 5%, transform 2%)
+
+
+> diskgrove@1.0.0 build
+> electron-vite build
+
+vite v7.3.7 building ssr environment for production...
+transforming...
+✓ 26 modules transformed.
+rendering chunks...
+out/main/index.js  92.72 kB
+✓ built in 150ms
+vite v7.3.7 building ssr environment for production...
+transforming...
+✓ 1 modules transformed.
+rendering chunks...
+out/preload/index.cjs  3.05 kB
+✓ built in 10ms
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 1862 modules transformed.
+rendering chunks...
+../../out/renderer/index.html                              0.86 kB
+../../out/renderer/THIRD_PARTY_LICENSES.txt               94.40 kB
+../../out/renderer/assets/pdf.worker.min-CjEcRF4W.mjs  1,264.34 kB
+../../out/renderer/assets/index-BXzXNlwJ.css              82.68 kB
+../../out/renderer/assets/pdf.worker.min-CTePDPuu.js       0.13 kB
+../../out/renderer/assets/pdf-CJH1LMZ9.js                854.54 kB
+../../out/renderer/assets/index-CMLDIGp6.js            1,592.16 kB
+✓ built in 1.90s

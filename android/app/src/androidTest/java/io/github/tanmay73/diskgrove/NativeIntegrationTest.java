@@ -3,20 +3,27 @@ package io.github.tanmay73.diskgrove;
 import static org.junit.Assert.*;
 
 import android.app.Instrumentation;
+import android.accessibilityservice.AccessibilityService;
+import android.app.usage.StorageStats;
+import android.app.usage.StorageStatsManager;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.os.Process;
 import android.os.SystemClock;
 import android.util.Base64;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inspector.WindowInspector;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import androidx.test.core.app.ActivityScenario;
+import androidx.lifecycle.Lifecycle;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SdkSuppress;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -27,6 +34,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -265,6 +273,198 @@ public class NativeIntegrationTest {
         assertEquals(Boolean.FALSE, evaluate("document.body.innerText.includes('Let DiskGrove see your storage')"));
     }
 
+    @Test
+    public void appsScreenGrantsUsageAccessAndShowsSystemSizes() throws Exception {
+        appOp("GET_USAGE_STATS", "default");
+        scenario.recreate();
+        openHome();
+        clickTab("Apps");
+        waitFor("document.body.innerText.includes('See data and cache sizes')");
+        assertEquals(Boolean.TRUE, evaluate(
+            "[...document.querySelectorAll('[role=tab]')].find(e => e.textContent === 'Unused').disabled"));
+        screenshot("apps-limited-access.png");
+
+        clickButton("Allow usage access");
+        waitForSystemPackage("com.android.settings");
+        AccessibilityNodeInfo toggle = null;
+        long deadline = SystemClock.elapsedRealtime() + 10000;
+        while (toggle == null && SystemClock.elapsedRealtime() < deadline) {
+            toggle = findSwitch(instrumentation.getUiAutomation().getRootInActiveWindow());
+            if (toggle == null) SystemClock.sleep(100);
+        }
+        assertNotNull("Usage access setting has no switch", toggle);
+        assertFalse("Usage access should initially be off", toggle.isChecked());
+        AccessibilityNodeInfo control = toggle;
+        while (control != null && !control.isClickable()) control = control.getParent();
+        assertNotNull("Usage access switch has no clickable control", control);
+        assertTrue("Could not toggle usage access", control.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+        screenshot("usage-access-setting.png");
+        assertTrue("Android did not grant usage access",
+            AppsInspector.hasUsageAccess(instrumentation.getTargetContext()));
+        systemBack();
+        waitFor("!document.body.innerText.includes('See data and cache sizes')" +
+            " && [...document.querySelectorAll('[role=tab]')].some(e => e.textContent === 'Unused' && !e.disabled)");
+
+        evaluate("[...document.querySelectorAll('[role=tab]')].find(e => e.textContent === 'All').click()");
+        String pkg = "com.android.settings";
+        String row = "[...document.querySelectorAll('button')].find(b => " +
+            "b.querySelector('img')?.src.includes('package=" + pkg + "'))";
+        waitFor(row);
+        evaluate(row + ".click()");
+        waitFor("document.querySelector('[role=dialog]')?.textContent.includes('" + pkg + "')");
+
+        Context context = instrumentation.getTargetContext();
+        ApplicationInfo info = context.getPackageManager().getApplicationInfo(pkg, 0);
+        StorageStats stats = context.getSystemService(StorageStatsManager.class)
+            .queryStatsForPackage(info.storageUuid, pkg, Process.myUserHandle());
+        JSONObject expected = new JSONObject()
+            .put("App", stats.getAppBytes())
+            .put("Data", Math.max(0, stats.getDataBytes() - stats.getCacheBytes()))
+            .put("Cache", stats.getCacheBytes())
+            .put("Total", stats.getAppBytes() + stats.getDataBytes());
+        JSONObject shown = (JSONObject) evaluate("Object.fromEntries(" +
+            "[...document.querySelectorAll('[role=dialog] .tabular')]" +
+            ".map(e => [e.previousElementSibling.textContent, e.textContent]))");
+        assertTrue("System app has no measured code", expected.getLong("App") > 0);
+        assertTrue("System app has no measured data", expected.getLong("Data") > 0);
+        for (String label : new String[] {"App", "Data", "Cache", "Total"}) {
+            assertEquals(label + " does not match Android StorageStats", formatBytes(expected.getLong(label)),
+                shown.getString(label));
+        }
+        assertNoOverflow();
+        screenshot("apps-system-sizes.png");
+        writeEvidence("apps-ui.json", new JSONObject().put("package", pkg)
+            .put("androidStorageStatsBytes", expected).put("displayedSizes", shown)
+            .put("usageAccessGrantedThroughSettings", true));
+
+        clickButton("App info");
+        waitForSystemPackage("com.android.settings");
+        screenshot("apps-system-app-info.png");
+        systemBack();
+        waitFor("[...document.querySelectorAll('[role=dialog] button')]" +
+            ".some(b => b.textContent.trim() === 'App info' && !b.disabled)");
+        assertEquals(Boolean.TRUE, evaluate("document.querySelector('[role=dialog]').textContent.includes('" + pkg + "')"));
+    }
+
+    @Test
+    public void storageScreenListsDeletesAndRefreshesRealPhotos() throws Exception {
+        File photo = createIndexedPhoto("gallery-" + UUID.randomUUID() + ".png");
+        clickTab("Storage");
+        evaluate("document.querySelector('button[aria-label=\"Refresh storage\"]').click()");
+        waitFor("[...document.querySelectorAll('button')].some(b => " +
+            "b.textContent.trim().startsWith('Images') && !b.disabled)");
+        screenshot("storage-categories.png");
+        clickButton("Images");
+        String name = JSONObject.quote(photo.getName());
+        String row = "[...document.querySelectorAll('li')].find(e => e.textContent.includes(" + name + "))";
+        waitFor(row + "?.querySelector('img')?.naturalWidth > 0");
+        assertEquals(formatBytes(photo.length()), evaluate(row + ".querySelector('.tabular').textContent"));
+        int before = ((Number) evaluate("document.querySelectorAll('li').length")).intValue();
+        long bytes = photo.length();
+        assertNoOverflow();
+        screenshot("storage-photo-list.png");
+
+        String selection = "document.querySelector('[aria-label=\"Select " + photo.getName() + "\"]')";
+        evaluate(selection + ".click()");
+        waitFor(selection + ".getAttribute('aria-checked') === 'true'");
+        scenario.onActivity(a -> a.getOnBackPressedDispatcher().onBackPressed());
+        waitFor(selection + ".getAttribute('aria-checked') === 'false'");
+        assertEquals("Images", evaluate("document.querySelector('h1').textContent"));
+
+        evaluate(selection + ".click()");
+        clickButton("Delete");
+        waitForDialog(android.R.id.button2);
+        clickDialogButton(android.R.id.button2);
+        waitForDialogGone(android.R.id.button2);
+        assertTrue("Cancel removed the photo", photo.exists());
+        assertEquals(Boolean.TRUE, evaluate("Boolean(" + row + ")"));
+
+        clickButton("Delete");
+        waitForDialog(android.R.id.button1);
+        screenshot("storage-delete-confirmation.png");
+        clickDialogButton(android.R.id.button1);
+        waitForDialogGone(android.R.id.button1);
+        waitFor("!(" + row + ")");
+        assertFalse("Confirmed delete left the real file behind", photo.exists());
+        int after = ((Number) evaluate("document.querySelectorAll('li').length")).intValue();
+        assertEquals("Deleted item did not disappear from the list", before - 1, after);
+        assertEquals(Boolean.FALSE, runScript("return (await window.diskgrove.android.mediaFiles('images', 2000))" +
+            ".files.some(f => f.path === " + JSONObject.quote(photo.getAbsolutePath()) + ");").get("value"));
+
+        // Simulate another app adding a photo while DiskGrove is in the background.
+        scenario.moveToState(Lifecycle.State.CREATED);
+        File added = createIndexedPhoto("new-photo-" + UUID.randomUUID() + ".png");
+        scenario.moveToState(Lifecycle.State.RESUMED);
+        waitFor("document.body.innerText.includes(" + JSONObject.quote(added.getName()) + ")");
+        screenshot("storage-refreshed.png");
+        writeEvidence("storage-ui.json", new JSONObject().put("fixtureBytes", bytes)
+            .put("rowsBeforeDeletion", before).put("rowsAfterDeletion", after)
+            .put("cancelKeptFile", true).put("confirmedDeleteRemovedFileAndMediaRow", true)
+            .put("backgroundPhotoAppearedOnResume", true));
+        evaluate("document.querySelector('button[aria-label=\"Back\"]').click()");
+        waitFor("/Analyze folders/i.test(document.body.innerText)");
+    }
+
+    private File createIndexedPhoto(String name) throws Exception {
+        File photo = new File(fixture, name);
+        Bitmap bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888);
+        bitmap.eraseColor(Color.rgb(46, 125, 50));
+        try (FileOutputStream output = new FileOutputStream(photo)) {
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output));
+        } finally {
+            bitmap.recycle();
+        }
+        CountDownLatch indexed = new CountDownLatch(1);
+        AtomicReference<Uri> uri = new AtomicReference<>();
+        MediaScannerConnection.scanFile(instrumentation.getTargetContext(), new String[] {photo.getAbsolutePath()},
+            new String[] {"image/png"}, (path, result) -> {
+                uri.set(result);
+                indexed.countDown();
+            });
+        assertTrue("Photo was not indexed", indexed.await(20, TimeUnit.SECONDS));
+        assertNotNull("MediaStore did not accept the photo", uri.get());
+        return photo;
+    }
+
+    private void waitForSystemPackage(String pkg) throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + 15000;
+        String observed = "no accessibility root";
+        while (SystemClock.elapsedRealtime() < deadline) {
+            AccessibilityNodeInfo root = instrumentation.getUiAutomation().getRootInActiveWindow();
+            if (root != null) {
+                observed = root.toString();
+                if (pkg.contentEquals(root.getPackageName())) return;
+            }
+            SystemClock.sleep(100);
+        }
+        screenshot("unexpected-system-screen.png");
+        fail("Android did not open " + pkg + ": " + observed);
+    }
+
+    private AccessibilityNodeInfo findSwitch(AccessibilityNodeInfo node) {
+        if (node == null) return null;
+        if (node.isCheckable() && node.getClassName().toString().endsWith("Switch")) return node;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = findSwitch(node.getChild(i));
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private void systemBack() {
+        assertTrue("System Back failed",
+            instrumentation.getUiAutomation().performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK));
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes == 0) return "0 B";
+        String[] units = {"B", "KB", "MB", "GB", "TB"};
+        int unit = Math.min((int) (Math.log(bytes) / Math.log(1024)), units.length - 1);
+        double value = bytes / Math.pow(1024, unit);
+        int digits = unit == 0 ? 0 : value >= 100 ? 1 : 2;
+        return String.format(Locale.US, "%." + digits + "f %s", value, units[unit]);
+    }
+
     private void write(String name, byte[] bytes) throws Exception {
         Files.write(new File(fixture, name).toPath(), bytes);
         fixtureBytes += bytes.length;
@@ -402,10 +602,7 @@ public class NativeIntegrationTest {
     }
 
     private void screenshot(String name) throws Exception {
-        String outputPath = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir");
-        assertNotNull("Run through Gradle to retain screenshots", outputPath);
-        File directory = new File(outputPath);
-        assertTrue(directory.isDirectory() || directory.mkdirs());
+        File directory = evidenceDirectory();
         // The WebView draws a frame or two after the page changes.
         SystemClock.sleep(750);
         instrumentation.waitForIdleSync();
@@ -417,6 +614,18 @@ public class NativeIntegrationTest {
         } finally {
             image.recycle();
         }
+    }
+
+    private File evidenceDirectory() {
+        String outputPath = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir");
+        assertNotNull("Run through Gradle to retain test evidence", outputPath);
+        File directory = new File(outputPath);
+        assertTrue(directory.isDirectory() || directory.mkdirs());
+        return directory;
+    }
+
+    private void writeEvidence(String name, JSONObject result) throws Exception {
+        Files.write(new File(evidenceDirectory(), name).toPath(), result.toString(2).getBytes(StandardCharsets.UTF_8));
     }
 
     private void removeFixture(File file) throws Exception {

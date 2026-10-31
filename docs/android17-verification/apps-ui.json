@@ -1,0 +1,16 @@
+{
+  "package": "com.android.settings",
+  "androidStorageStatsBytes": {
+    "App": 8192,
+    "Data": 643072,
+    "Cache": 389120,
+    "Total": 1040384
+  },
+  "displayedSizes": {
+    "App": "8.00 KB",
+    "Cache": "380.0 KB",
+    "Data": "628.0 KB",
+    "Total": "1016.0 KB"
+  },
+  "usageAccessGrantedThroughSettings": true
+}

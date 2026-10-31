@@ -213,7 +213,7 @@ make changes elsewhere. The app's version comes from `package.json`.
 
 The instrumented tests run the **release APK**, not a mock filesystem or a
 debug-only build. On a disposable API 30+ emulator with a phone-sized display,
-ideally one with the newest system image (`system-images;android-37;google_apis;arm64-v8a`
+ideally one with the newest system image (`system-images;android-37.0;google_apis;arm64-v8a`
 or `x86_64`):
 
 ```sh
@@ -229,6 +229,11 @@ media ranges, rescanning, and cancelling/accepting the native delete dialog.
 It also checks the access page and the home screen's tabs, the app list with
 sizes and icons, files by kind with thumbnails, deleting a file from those
 lists, and that Back at the scan root returns home.
+The Apps UI test grants usage access through Android Settings, checks the
+displayed app/data/cache/total sizes against Android's `StorageStats`, and
+returns from App info. The Storage UI test opens an image category, checks a
+real thumbnail and file size, cancels and confirms deletion, and verifies that
+a photo added in the background appears on resume.
 It changes the app's all-files-access and usage-access settings and recent
 scans, so do not run it against an installation whose settings you need to
 keep. Tests require API
@@ -240,6 +245,11 @@ Retain `app/build/outputs/androidTest-results/connected/` (JUnit XML and device
 logs), `app/build/reports/androidTests/connected/` (HTML report), and
 `app/build/outputs/connected_android_test_additional_output/` (screenshots,
 copied automatically from the emulator by Gradle).
+
+The checked-in [Android 17 verification snapshot](docs/android17-verification/)
+contains the API 37 JUnit result, measured Apps/Storage UI results, screenshots,
+lint report and full Gradle output. These are recorded observations, not golden
+size values: Android's cache and storage figures change between runs.
 
 The following checks supplement the automated tests, especially system pickers,
 opening files in other apps and the different preview formats.
